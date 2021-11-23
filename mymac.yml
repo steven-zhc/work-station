@@ -1,0 +1,13 @@
+---
+- name: Setup Mac OS Workspace
+  hosts: localhost
+
+  tasks:
+  - name: Install homebrew
+    shell: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    
+  - name: install node version management n
+    community.general.homebrew:
+      name: n
+      state: latest
+  - 
