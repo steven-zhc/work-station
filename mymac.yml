@@ -3,11 +3,15 @@
   hosts: localhost
 
   tasks:
-  - name: Install homebrew
-    shell: /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    
-  - name: install node version management n
+  - name: Install iTerm2
+    shell: brew cask install iterm2
+  - name: Install Zsh
+    community.general.homebrew: 
+      name: zsh
+      state: latest
+  - name: Install oh-my-zsh
+    shell: sh -c "$(curl -fsSL https://raw.githubusercontent.com/robbyrussell/oh-my-zsh/master/tools/install.sh)"
+  - name: Install node version management n
     community.general.homebrew:
       name: n
       state: latest
-  - 
