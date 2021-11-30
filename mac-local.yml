@@ -13,9 +13,19 @@
         name: iterm2
         state: present
       tags: [app]
+    - name: Install VS Code
+      community.general.homebrew_cask:
+        name: visual-studio-code
+        state: present
+      tags: [app]
     - name: Install Zsh
       community.general.homebrew:
         name: zsh
+        state: latest
+      tags: [terminal]
+    - name: Install tmux
+      community.general.homebrew:
+        name: tmux
         state: latest
       tags: [terminal]
     - name: Install oh-my-zsh
