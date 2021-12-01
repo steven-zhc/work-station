@@ -1,0 +1,13 @@
+---
+- name: Install Apps
+  tasks:
+  - name: Install iTerm2
+    community.general.homebrew_cask:
+      name: iterm2
+      state: present
+    tags: [app]
+  - name: Install VS Code
+    community.general.homebrew_cask:
+      name: visual-studio-code
+      state: present
+    tags: [app]

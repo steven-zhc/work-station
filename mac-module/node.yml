@@ -1,0 +1,17 @@
+---
+- name: Install Node.js
+  tasks:
+  - name: Install node version management n
+        community.general.homebrew:
+          name: n
+          state: latest
+        # tags: [js, node]
+  - name: Ensure node folder
+    become: yes
+    shell: |
+      mkdir -p /usr/local/n
+      chown -R haiczhan /usr/local/n/
+    tags: [js, node]
+  - name: Install node
+    shell: n latest
+    tags: [js, node]

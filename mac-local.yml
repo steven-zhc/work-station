@@ -7,45 +7,7 @@
       become: yes
       shell: chown -R haiczhan /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
 
-  tasks:
-    - name: Install iTerm2
-      community.general.homebrew_cask:
-        name: iterm2
-        state: present
-      tags: [app]
-    - name: Install VS Code
-      community.general.homebrew_cask:
-        name: visual-studio-code
-        state: present
-      tags: [app]
-    - name: Install Zsh
-      community.general.homebrew:
-        name: zsh
-        state: latest
-      tags: [terminal]
-    - name: Install tmux
-      community.general.homebrew:
-        name: tmux
-        state: latest
-      tags: [terminal]
-    - name: Install oh-my-zsh
-      shell: "sh -c $(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-      tags: [terminal]
-    - name: Install Zsh plugin - auto suggestions
-      community.general.homebrew:
-        name: zsh-autosuggestions
-        state: present
-      tags: [terminal]
-    - name: Install node version management n
-      community.general.homebrew:
-        name: n
-        state: latest
-      tags: [js, node]
-    - name: Ensure node folder
-      become: yes
-      shell: |
-        mkdir -p /usr/local/n
-        chown -R haiczhan /usr/local/n/
-      tags: [js, node]
-    - name: Install node
-      shell: n latest
+  include_tasks: mac-module/app.yml
+  include_tasks: mac-module/terminal.yml
+  include_tasks: mac-module/node.yml
+      
