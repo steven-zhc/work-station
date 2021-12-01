@@ -1,13 +1,16 @@
 ---
 - name: Setup Mac OS Workspace
   hosts: localhost
+  vars:
+    - whoami: haiczhan
 
   pre_tasks:
     - name: Update Mac Permissions
       become: yes
-      shell: chown -R haiczhan /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
+      shell: chown -R {{ whoami }} /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
 
-  include_tasks: mac-module/app.yml
-  include_tasks: mac-module/terminal.yml
-  include_tasks: mac-module/node.yml
+  tasks:
+    - include: mac-module/app.yml
+    - include: mac-module/terminal.yml
+    - include: mac-module/node.yml
       
