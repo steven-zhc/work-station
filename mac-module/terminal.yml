@@ -5,6 +5,13 @@
     name: tmux
     state: latest
   tags: [terminal]
+    
+- name: Install stow
+  community.general.homebrew:
+    name: stow
+    state: latest
+  tags: [terminal]
+
 
 - name: Install Zsh
   community.general.homebrew:
