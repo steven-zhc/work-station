@@ -2,15 +2,26 @@
 - name: Setup Mac OS Workspace
   hosts: localhost
   vars:
-    - whoami: haiczhan
+    - whoami: "{{ lookup('env', 'USER') | default('steven', True) }}"
 
-  pre_tasks:
-    - name: Update Mac Permissions
-      become: yes
-      shell: chown -R {{ whoami }} /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
+  # pre_tasks:
+  #   - name: Update Mac Permissions
+  #     become: yes
+  #     shell: chown -R {{ whoami }} /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
+  #     shell: chown -R $(whoami):admin /usr/local
+  #     tags: [terminal, app]
 
   tasks:
-    - include: mac-module/app.yml
-    - include: mac-module/terminal.yml
-    - include: mac-module/node.yml
+    # - name: Print out facts
+    #   debug:
+    #     var: ansible_facts
+    - name: Setup Apps
+      include_tasks: mac-module/app.yml
+      tags: [apps]
+    - name: Setup Terminal
+      include_tasks: mac-module/terminal.yml
+      tags: [terminal]
+    - name: Setup Node.js
+      include_tasks: mac-module/node.yml
+      tags: [js, node]
       
