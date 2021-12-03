@@ -4,24 +4,23 @@
   vars:
     - whoami: "{{ lookup('env', 'USER') | default('steven', True) }}"
 
-  # pre_tasks:
-  #   - name: Update Mac Permissions
-  #     become: yes
-  #     shell: chown -R {{ whoami }} /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
-  #     shell: chown -R $(whoami):admin /usr/local
-  #     tags: [terminal, app]
+  pre_tasks:
+    - name: Update Mac Permissions
+      become: yes
+      shell: chown -R {{ whoami }} /usr/local/bin /usr/local/lib /usr/local/include /usr/local/share
+      tags: [terminal, app]
 
   tasks:
     # - name: Print out facts
     #   debug:
     #     var: ansible_facts
-    - name: Setup Apps
-      include_tasks: mac-module/app.yml
-      tags: [apps]
+    # - name: Setup Apps
+    #   include_tasks: mac-module/app.yml
+    #   tags: [apps]
     - name: Setup Terminal
       include_tasks: mac-module/terminal.yml
       tags: [terminal]
-    - name: Setup Node.js
-      include_tasks: mac-module/node.yml
-      tags: [js, node]
+    # - name: Setup Node.js
+    #   include_tasks: mac-module/node.yml
+    #   tags: [js, node]
       
