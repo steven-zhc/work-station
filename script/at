@@ -1,11 +1,21 @@
 #!/bin/sh
 
-folders=(
+list=(
     "/scratch/helium/helium.js"
     "/scratch/helium/helium-label.purs"
     "/scratch/helium/helium-adhoc.ts"
     "/scratch/helium/environments"
 )
+
+folder=()
+
+for f in "${list[@]}"
+do
+    if [[ -d "${f}" ]]
+    then
+        folder+=("${f}")
+    fi
+done
 
 session=$(echo "${folders[*]}" | tr ' ' '\n' | fzf)
 
