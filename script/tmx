@@ -29,9 +29,21 @@ fi
 
 session_name=$(basename "$session" | tr . '_')
 
-if ! tmux has-session -t "$session_name" ; then
+tmux has-session -t "$session_name"
+
+if [ $? != 0 ]; then
     echo "Create session $session_name"
-    tmux new-session -s "$session_name" -c "$session" -d
+    tmux new-session -s $session_name -d
+    tmux send-keys -t $session_name "cd $session" C-m
+    tmux send-keys -t $session_name "vi ." C-m
+    # tmux split-window -v -t $session_name
+    # tmux select-layout -t $session_name main-horizontal
+    tmux split-window -v -p 15 -t $session_name
+    tmux send-keys -t $session_name:1.2 "cd $session" C-m
+    tmux new-window -n console -t $session_name
+    tmux send-keys -t $session_name:2 "cd $session" C-m
+    tmux select-window -t $session_name:1
+    tmux select-pane -t $session_name:1.1
 fi
 
 if [ -z "${TMUX}" ]; then
