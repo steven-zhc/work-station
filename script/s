@@ -1,0 +1,203 @@
+#!/bin/bash
+
+# Author : Steven.zhang (steven.zhang031@gmail.com)
+# File   : s
+# Version: 1.2
+# Automatically call server by name
+#
+###BEGIN###
+#--------------------------------------------------------------------------------
+#Connect to server
+#Please update .ssh/config to identify the user, host and keys 
+#--------------------------------------------------------------------------------
+#SYNOPSIS
+#
+#./s <Server Nickname> [-i] [-u FILENAME] [-d FILENAME]
+#     -i  : Inquire about server name and detail information
+#     -u  : Upload file to server [HOME folder]
+#     -d  : Download file [HOME folder] to local
+#
+#Example 1 : Connection to server directly
+#./s [Server Nickname]
+#
+#Example 2 : Upload file to server
+#./s <Server Nickname> -u <LOCAL_FILE_NAME> 
+#
+#Example 3 : Download server file to local
+#./s [Server Nickname] -d <REMOTE_FILE_NAME>
+#
+#Example 4 : Upload multiple files
+#./s [Server Nickname] -u <FILE_1> -u <FILE_2>
+#
+#--------------------------------------------------------------------------------
+###END###
+#
+#SERVER FORMAT
+# SERVERS=(
+#     "w:Personal Work Machine:HOST_IP_OR_DOMAIN_NAME"
+#     "mq:==> MQ worker <==:HOST1 HOST2 HOST3" 
+# )
+#
+
+WORKSPACE=`pwd`
+SELF="$0"
+
+SERVERS=(
+    "adhoc:Jenkins adhoc node:slc11bso slc13osq:haiczhan:22"
+    "hcz:Haichao Zhang node:slc10uxh slc11bso slc11cjb slc13osq:haiczhan:22"
+    "db:Jenkins database node:slc10uxh slc13osq:haiczhan:22"
+    "w:Personal Work Machine:slc10vfs.us.oracle.com:haiczhan:22"
+    "phx1:Phx OCI VM:phoenix65843.ad3.fusionappsdphx1.oraclevcn.com:haiczhan:22"
+    "phx2:Phx OCI VM:phoenix65844.ad3.fusionappsdphx1.oraclevcn.com:haiczhan:22"
+    "11bso:Jenkins Adhoc/Test:slc11bso.us.oracle.com:haiczhan:22"
+    "13osq:Jenkins Node 2:slc13osq.us.oracle.com:haiczhan:22"
+    "10uxh:Jenkins DB/Adhoc 1:slc10uxh.us.oracle.com:haiczhan:22"
+    "11cjb:Jenkins DB:slc11cjb.us.oracle.com:haiczhan:22"
+    "10wfd:Jenkins Label Node:slc10wfd.us.oracle.com:haiczhan:22"
+)
+
+RCol='\e[0m'    # Text Reset
+
+# Regular           Bold                Underline           High Intensity      BoldHigh Intens     Background          High Intensity Backgrounds
+Bla='\e[0;30m';     BBla='\e[1;30m';    UBla='\e[4;30m';    IBla='\e[0;90m';    BIBla='\e[1;90m';   On_Bla='\e[40m';    On_IBla='\e[0;100m';
+Red='\e[0;31m';     BRed='\e[1;31m';    URed='\e[4;31m';    IRed='\e[0;91m';    BIRed='\e[1;91m';   On_Red='\e[41m';    On_IRed='\e[0;101m';
+Gre='\e[0;32m';     BGre='\e[1;32m';    UGre='\e[4;32m';    IGre='\e[0;92m';    BIGre='\e[1;92m';   On_Gre='\e[42m';    On_IGre='\e[0;102m';
+Yel='\e[0;33m';     BYel='\e[1;33m';    UYel='\e[4;33m';    IYel='\e[0;93m';    BIYel='\e[1;93m';   On_Yel='\e[43m';    On_IYel='\e[0;103m';
+Blu='\e[0;34m';     BBlu='\e[1;34m';    UBlu='\e[4;34m';    IBlu='\e[0;94m';    BIBlu='\e[1;94m';   On_Blu='\e[44m';    On_IBlu='\e[0;104m';
+Pur='\e[0;35m';     BPur='\e[1;35m';    UPur='\e[4;35m';    IPur='\e[0;95m';    BIPur='\e[1;95m';   On_Pur='\e[45m';    On_IPur='\e[0;105m';
+Cya='\e[0;36m';     BCya='\e[1;36m';    UCya='\e[4;36m';    ICya='\e[0;96m';    BICya='\e[1;96m';   On_Cya='\e[46m';    On_ICya='\e[0;106m';
+Whi='\e[0;37m';     BWhi='\e[1;37m';    UWhi='\e[4;37m';    IWhi='\e[0;97m';    BIWhi='\e[1;97m';   On_Whi='\e[47m';    On_IWhi='\e[0;107m';
+
+printSig()
+{
+    printf "${BICya}$1${RCol}\n"
+}
+
+printInfo()
+{
+    printf "${BIYel}$1${RCol}\n"
+}
+
+printError()
+{
+    printf "${BIRed}$1${RCol}\n"
+}
+
+printSuccess()
+{
+    printf "${BIGre}$1${RCol}\n"
+}
+
+printServerList()
+{
+    echo -e "Server List: (Nickname: Description)"
+    for server in "${SERVERS[@]}" ; do
+        KEY=`echo $server | awk -F':' '{print $1}'`
+        DESC=`echo $server | awk -F':' '{print $2}'`
+        VALUE=`echo $server | awk -F':' '{print $3}'`
+        USER=`echo $server | awk -F':' '{print $4}'`
+        PORT=`echo $server | awk -F':' '{print $5}'`
+        printInfo "\t${BICya}${KEY}${RCol}:\t${USER}@${VALUE}:${PORT} - ${DESC}"
+    done
+    echo ""
+}
+
+usage()
+{
+    _BEGIN_LINE=`grep -n "###BEGIN###" ${SELF} | sed -n 1p | awk -F':' '{print $1}'`
+    _END_LINE=`grep -n "###END###" ${SELF} | sed -n 1p |  awk -F':' '{print $1}'`
+
+    _BEGIN_LINE=`expr $_BEGIN_LINE + 1`
+    _END_LINE=`expr $_END_LINE - 1` 
+
+    sed -n "${_BEGIN_LINE},${_END_LINE}p" ${SELF} | cut -c2-
+    
+    printServerList
+}
+
+hr() 
+{
+  local start=$'\e(0' end=$'\e(B' line='qqqqqqqqqqqqqqqq'
+  local cols=${COLUMNS:-$(tput cols)}
+  while ((${#line} < cols)); do line+="$line"; done
+  printf '%s%s%s\n' "$start" "${line:0:cols}" "$end"
+}
+
+if [ $# -lt 1 ]
+then
+    usage
+    exit
+fi
+
+SER_KEY=""
+SER_VALUE=""
+SER_USER=""
+SER_PORT=""
+
+# get and validate server information
+for server in "${SERVERS[@]}" ; do
+    _KEY=`echo $server | awk -F':' '{print $1}'`
+    if [ "${_KEY}" == "$1" ] ; then
+        SER_KEY="${_KEY}"
+        SER_VALUE=`echo $server | awk -F':' '{print $3}'`
+        SER_USER=`echo $server | awk -F':' '{print $4}'`
+        SER_PORT=`echo $server | awk -F':' '{print $5}'`
+        break
+    fi
+done
+
+if [ "${SER_VALUE}" == "" ] ; then
+    printError "Missing server name or invalid input."
+    printInfo "./s <Server Nickname> [-i] [-u FILENAME] [-d FILENAME]"
+    echo ""
+    printServerList
+    exit
+fi
+
+OPTIND=2
+while getopts ":iu:d:h" opt; do
+  case "$opt" in
+    i)
+        printInfo "${SER_KEY} : [${SER_VALUE}]"
+        ;;
+    u)  
+        printSig "Uploading your file [${OPTARG}] to [${SER_VALUE}]"
+        scp "$OPTARG" ${SER_USER}@${SER_VALUE}:/scratch
+        ;;
+    d)
+        # check the local file
+        if [ -f $OPTARG ] ; then
+            printInfo "The file $OPTARG seems already exists at your local. "
+            read -p "Do you want to replace it? [y|n] > " _ANSWER
+  
+            if [ $_ANSWER != "y" ] ; then
+                printError "Stop downloading $OPTARG."
+                exit 0
+            fi
+        fi
+  
+        # parse server config
+        printSig "Download your file [${SER_VALUE}] [${OPTARG}] to local"
+        scp ${SER_USER}@${SER_VALUE}:$OPTARG ./
+      	;;
+      	
+    \?)
+        usage
+        exit 1
+        ;;
+  esac
+done
+
+if [ $OPTIND == 2 ]; then
+    # connect to server
+    printSig "We're sending you to $SER_KEY [${SER_USER}@${SER_VALUE}] ..."
+
+    if [[ "$SER_VALUE" =~ ( ) ]]
+    then
+        i2cssh -2 -l ${SER_USER} ${SER_VALUE}
+    else
+        ssh ${SER_USER}@${SER_VALUE} -p ${SER_PORT}
+    fi
+fi
+
+
