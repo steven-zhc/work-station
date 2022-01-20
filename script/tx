@@ -8,6 +8,8 @@ manual_list=(
     "/scratch/helium/environments"
 )
 
+image_folders=( $(find /scratch/helium/helium.js/images -maxdepth 1 -mindepth 1 -type d) )
+
 find_list=( $(find ~/Workspace -maxdepth 2 -mindepth 1 -type d) )
 
 list=(${manual_list[@]} ${find_list[@]})
