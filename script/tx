@@ -2,17 +2,13 @@
 
 manual_list=(
     "${HOME}/.dotfile"
-    "/scratch/helium/helium.js"
-    "/scratch/helium/helium-label.purs"
-    "/scratch/helium/helium-adhoc.ts"
-    "/scratch/helium/environments"
 )
 
 image_folders=( $(find /scratch/helium/helium.js/images -maxdepth 1 -mindepth 1 -type d) )
+vm_works=( $(find /scratch/helium -maxdepth 1 -mindepth 1 -type d) )
+mac_works=( $(find ~/Workspace -maxdepth 2 -mindepth 1 -type d) )
 
-find_list=( $(find ~/Workspace -maxdepth 2 -mindepth 1 -type d) )
-
-list=(${manual_list[@]} ${find_list[@]})
+list=(${manual_list[@]} ${image_folders[@]} ${vm_works[@]} ${mac_works[@]})
 folders=()
 
 for f in "${list[@]}"
