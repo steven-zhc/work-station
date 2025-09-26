@@ -184,6 +184,48 @@
         state: present
       tags: [cli, lazygit]
 
+    - name: Install neovim
+      homebrew:
+        name: neovim
+        state: present
+      tags: [cli, neovim]
+
+    - name: Backup existing neovim config
+      shell: mv ~/.config/nvim ~/.config/nvim.bak
+      args:
+        creates: ~/.config/nvim.bak
+      ignore_errors: yes
+      tags: [neovim, astronvim]
+
+    - name: Backup existing neovim share
+      shell: mv ~/.local/share/nvim ~/.local/share/nvim.bak
+      args:
+        creates: ~/.local/share/nvim.bak
+      ignore_errors: yes
+      tags: [neovim, astronvim]
+
+    - name: Backup existing neovim state
+      shell: mv ~/.local/state/nvim ~/.local/state/nvim.bak
+      args:
+        creates: ~/.local/state/nvim.bak
+      ignore_errors: yes
+      tags: [neovim, astronvim]
+
+    - name: Backup existing neovim cache
+      shell: mv ~/.cache/nvim ~/.cache/nvim.bak
+      args:
+        creates: ~/.cache/nvim.bak
+      ignore_errors: yes
+      tags: [neovim, astronvim]
+
+    - name: Clone AstroNvim configuration
+      git:
+        repo: https://github.com/AstroNvim/template
+        dest: "{{ lookup('env','HOME') }}/.config/nvim"
+        clone: yes
+        update: yes
+      tags: [neovim, astronvim]
+
     - name: Install jq
       homebrew:
         name: jq
