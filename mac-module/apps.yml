@@ -29,3 +29,9 @@
     name: fork
     state: present
   tags: [apps, fork, git]
+
+- name: Install Postman
+  homebrew_cask:
+    name: postman
+    state: present
+  tags: [apps, postman, api]
