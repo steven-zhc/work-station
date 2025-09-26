@@ -1,0 +1,61 @@
+---
+# Shell Configuration
+
+- name: Adjust Fish shell path for Apple Silicon
+  set_fact:
+    fish_shell_path: /opt/homebrew/bin/fish
+  when: ansible_architecture == "arm64"
+  tags:
+    - shell
+    - fish_path
+
+- name: Install Fish shell
+  homebrew:
+    name: fish
+    state: present
+  tags:
+    - shell
+    - fish
+
+- name: Source custom env file in Fish
+  lineinfile:
+    path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
+    line: "source $HOME/.myenv"
+    state: present
+  tags: [fish, env, shell]
+
+- name: Source aliases file in Fish
+  lineinfile:
+    path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
+    line: "source $HOME/.aliases"
+    state: present
+  tags: [fish, aliases, shell]
+
+- name: Change default shell to Fish
+  ansible.builtin.user:
+    name: "{{ lookup('env','USER') }}"
+    shell: "{{ fish_shell_path }}"
+  become: true
+  tags:
+    - shell
+    - default_shell
+
+- name: Install Starship prompt
+  homebrew:
+    name: starship
+    state: present
+  tags:
+    - shell
+    - starship
+    - starship_install
+
+- name: Ensure starship init in fish config
+  ansible.builtin.lineinfile:
+    path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
+    line: "starship init fish | source"
+    create: yes
+    state: present
+  tags:
+    - shell
+    - starship
+    - starship_config

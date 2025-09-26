@@ -1,0 +1,13 @@
+---
+# Nerd Fonts for Development
+
+- name: Install Nerd Fonts (Fira Code & JetBrains Mono)
+  homebrew_cask:
+    name:
+      - font-fira-code-nerd-font
+      - font-jetbrains-mono-nerd-font
+    state: present
+  tags:
+    - fonts
+    - fira_code
+    - jetbrains_mono

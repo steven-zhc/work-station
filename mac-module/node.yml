@@ -1,18 +1,57 @@
 ---
+# Node.js and JavaScript Runtime Setup
 
-- name: Install node version management n
-  community.general.homebrew:
-    name: n
-    state: latest
-  # tags: [js, node]
+- name: Install Volta via Homebrew
+  homebrew:
+    name: volta
+    state: present
+  tags:
+    - volta
+    - nodejs
+    - node
 
-- name: Ensure node folder
-  become: yes
-  shell: |
-    mkdir -p /usr/local/n
-    chown -R haiczhan /usr/local/n/
-  tags: [js, node]
+- name: Install Node.js via Volta
+  shell: volta install node@{{ node_version }}
+  args:
+    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/node/{{ node_version }}.*/"
+  tags:
+    - volta
+    - nodejs
+    - node
 
-- name: Install node
-  shell: n latest
-  tags: [js, node]
+- name: Install pnpm via Volta
+  shell: volta install pnpm
+  args:
+    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/pnpm"
+  tags:
+    - volta
+    - pnpm
+    - node
+
+- name: Run pnpm setup (force global bin dir setup)
+  shell: pnpm setup
+  args:
+    creates: "{{ lookup('env','HOME') }}/.pnpm"
+  tags: [pnpm, pnpm_setup, node]
+
+- name: Ensure ~/.pnpm directory exists
+  file:
+     path: "{{ lookup('env','HOME') }}/.pnpm"
+     state: directory
+     mode: '0755'
+  tags: [pnpm, pnpm_setup, node]
+
+- name: Tap oven-sh/bun repository
+  homebrew_tap:
+    tap: oven-sh/bun
+    state: present
+  tags: [bun, tap, node]
+
+- name: Install Bun
+  homebrew:
+    name: oven-sh/bun/bun
+    state: present
+  tags:
+    - bun
+    - bun_install
+    - node

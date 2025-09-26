@@ -1,0 +1,10 @@
+---
+# AI Development Tools
+
+- name: Install Claude Code globally with pnpm
+  shell: pnpm install -g @anthropic-ai/claude-code
+  args:
+    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/claude-code"
+  tags:
+    - ai
+    - claude
