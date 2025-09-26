@@ -23,3 +23,9 @@
     - apps
     - alttab
     - rectangle
+
+- name: Install Fork Git client
+  homebrew_cask:
+    name: fork
+    state: present
+  tags: [apps, fork, git]

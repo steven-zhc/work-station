@@ -23,7 +23,7 @@
 
     - name: Include GUI applications
       include_tasks: mac-module/apps.yml
-      tags: [apps]
+      tags: [apps, fork]
 
     - name: Include AI tools
       include_tasks: mac-module/ai.yml
