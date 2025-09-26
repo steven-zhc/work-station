@@ -12,7 +12,6 @@
     state: latest
   tags: [terminal]
 
-
 - name: Install Zsh
   community.general.homebrew:
     name: zsh
@@ -25,12 +24,13 @@
     state: present
   tags: [terminal]
 
+- name: Install oh-my-zsh
+  shell: "sh -c $(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
+  tags: [terminal]
+
 - name: Install fzf
   community.general.homebrew:
     name: fzf
     state: present
   tags: [terminal]
 
-- name: Install oh-my-zsh
-  shell: "sh -c $(curl -fsSL https://raw.github.com/ohmyzsh/ohmyzsh/master/tools/install.sh)"
-  tags: [terminal]
