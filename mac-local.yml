@@ -23,7 +23,7 @@
 
     - name: Include GUI applications
       include_tasks: mac-module/apps.yml
-      tags: [apps, fork]
+      tags: [apps]
 
     - name: Include AI tools
       include_tasks: mac-module/ai.yml
@@ -39,7 +39,7 @@
 
     - name: Include CLI tools
       include_tasks: mac-module/cli.yml
-      tags: [cli, neovim, astronvim]
+      tags: [cli]
 
     - name: Include Python tools
       include_tasks: mac-module/python.yml
