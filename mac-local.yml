@@ -8,14 +8,6 @@
     # Default to Intel path
     fish_shell_path: /usr/local/bin/fish
   tasks:
-    - name: Ensure Homebrew is installed
-      homebrew:
-        name: brew
-        state: present
-      tags:
-        - homebrew
-        - setup
-
     # Import modular tasks
     - name: Include Node.js and Bun setup
       include_tasks: mac-module/node.yml
@@ -44,3 +36,7 @@
     - name: Include Python tools
       include_tasks: mac-module/python.yml
       tags: [python]
+
+    - name: Include Java development tools
+      include_tasks: mac-module/java.yml
+      tags: [java]

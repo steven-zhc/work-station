@@ -1,0 +1,36 @@
+---
+# Java Development Environment Setup
+
+- name: Install OpenJDK via Homebrew
+  homebrew:
+    name: openjdk
+    state: present
+  tags:
+    - java-all
+    - jdk
+
+- name: Create symlink for OpenJDK
+  file:
+    src: /usr/local/opt/openjdk/libexec/openjdk.jdk
+    dest: /Library/Java/JavaVirtualMachines/openjdk.jdk
+    state: link
+  become: yes
+  tags:
+    - java-all
+    - jdk
+
+- name: Install Maven
+  homebrew:
+    name: maven
+    state: present
+  tags:
+    - java-all
+    - maven
+
+- name: Install Gradle
+  homebrew:
+    name: gradle
+    state: present
+  tags:
+    - java-all
+    - gradle

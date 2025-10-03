@@ -41,3 +41,9 @@
     name: vnc-viewer
     state: present
   tags: [all, vnc]
+
+- name: Install Notion
+  homebrew_cask:
+    name: notion
+    state: present
+  tags: [all, notion]
