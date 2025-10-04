@@ -9,13 +9,13 @@
     fish_shell_path: /usr/local/bin/fish
   tasks:
     # Import modular tasks
-    - name: Include Node.js and Bun setup
-      include_tasks: mac-module/node.yml
-      tags: [node, volta, bun, pnpm]
+    - name: Include js, Node.js and Bun setup
+      include_tasks: mac-module/js.yml
+      tags: [js]
 
     - name: Include GUI applications
-      include_tasks: mac-module/apps.yml
-      tags: [apps]
+      include_tasks: mac-module/app.yml
+      tags: [app]
 
     - name: Include AI tools
       include_tasks: mac-module/ai.yml
@@ -26,8 +26,8 @@
       tags: [shell]
 
     - name: Include fonts
-      include_tasks: mac-module/fonts.yml
-      tags: [fonts]
+      include_tasks: mac-module/font.yml
+      tags: [font]
 
     - name: Include CLI tools
       include_tasks: mac-module/cli.yml

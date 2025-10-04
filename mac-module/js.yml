@@ -7,8 +7,7 @@
     state: present
   tags:
     - volta
-    - nodejs
-    - node
+    - js-all
 
 - name: Install Node.js via Volta
   shell: volta install node@{{ node_version }}
@@ -16,8 +15,7 @@
     creates: "{{ lookup('env','HOME') }}/.volta/tools/image/node/{{ node_version }}.*/"
   tags:
     - volta
-    - nodejs
-    - node
+    - js-all
 
 - name: Install pnpm via Volta
   shell: volta install pnpm
@@ -26,26 +24,26 @@
   tags:
     - volta
     - pnpm
-    - node
+    - js-all
 
 - name: Run pnpm setup (force global bin dir setup)
   shell: pnpm setup
   args:
     creates: "{{ lookup('env','HOME') }}/.pnpm"
-  tags: [pnpm, pnpm_setup, node]
+  tags: [pnpm, pnpm_setup, js-all]
 
 - name: Ensure ~/.pnpm directory exists
   file:
      path: "{{ lookup('env','HOME') }}/.pnpm"
      state: directory
      mode: '0755'
-  tags: [pnpm, pnpm_setup, node]
+  tags: [pnpm, pnpm_setup, js-all]
 
 - name: Tap oven-sh/bun repository
   homebrew_tap:
     tap: oven-sh/bun
     state: present
-  tags: [bun, tap, node]
+  tags: [bun, tap, js-all]
 
 - name: Install Bun
   homebrew:
@@ -54,4 +52,4 @@
   tags:
     - bun
     - bun_install
-    - node
+    - js-all

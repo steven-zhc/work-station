@@ -6,7 +6,7 @@
     fish_shell_path: /opt/homebrew/bin/fish
   when: ansible_architecture == "arm64"
   tags:
-    - shell
+    - shell-all
     - fish_path
 
 - name: Install Fish shell
@@ -14,7 +14,7 @@
     name: fish
     state: present
   tags:
-    - shell
+    - shell-all
     - fish
 
 - name: Source custom env file in Fish
@@ -22,14 +22,14 @@
     path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
     line: "source $HOME/.myenv"
     state: present
-  tags: [fish, env, shell]
+  tags: [fish, env, shell-all]
 
 - name: Source aliases file in Fish
   lineinfile:
     path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
     line: "source $HOME/.aliases"
     state: present
-  tags: [fish, aliases, shell]
+  tags: [fish, aliases, shell-all]
 
 - name: Change default shell to Fish
   ansible.builtin.user:
@@ -37,7 +37,7 @@
     shell: "{{ fish_shell_path }}"
   become: true
   tags:
-    - shell
+    - shell-all
     - default_shell
 
 - name: Install Starship prompt
@@ -45,7 +45,7 @@
     name: starship
     state: present
   tags:
-    - shell
+    - shell-all
     - starship
     - starship_install
 
@@ -56,6 +56,6 @@
     create: yes
     state: present
   tags:
-    - shell
+    - shell-all
     - starship
     - starship_config

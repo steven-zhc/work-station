@@ -8,6 +8,6 @@
       - font-jetbrains-mono-nerd-font
     state: present
   tags:
-    - fonts
+    - font-all
     - fira_code
     - jetbrains_mono

@@ -5,13 +5,13 @@
   homebrew_cask:
     name: iterm2
     state: present
-  tags: [all, iterm2]
+  tags: [app-all, iterm2]
 
 - name: Install VS Code
   homebrew_cask:
     name: visual-studio-code
     state: present
-  tags: [all, vscode]
+  tags: [app-all, vscode]
 
 - name: Install AltTab and Rectangle
   homebrew_cask:
@@ -20,7 +20,7 @@
       - rectangle
     state: present
   tags:
-    - all
+    - app-all
     - alttab
     - rectangle
 
@@ -28,22 +28,28 @@
   homebrew_cask:
     name: fork
     state: present
-  tags: [all, fork, git]
+  tags: [app-all, fork, git]
 
 - name: Install Postman
   homebrew_cask:
     name: postman
     state: present
-  tags: [all, postman, api]
+  tags: [app-all, postman, api]
 
 - name: Install VNC Viewer
   homebrew_cask:
     name: vnc-viewer
     state: present
-  tags: [all, vnc]
+  tags: [app-all, vnc]
 
 - name: Install Notion
   homebrew_cask:
     name: notion
     state: present
-  tags: [all, notion]
+  tags: [app-all, notion]
+
+- name: Install Rancher Desktop
+  homebrew_cask:
+    name: rancher
+    state: present
+  tags: [app-all, rancher, docker, kubernetes]

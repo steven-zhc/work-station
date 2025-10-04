@@ -7,10 +7,14 @@
     creates: "{{ lookup('env','HOME') }}/.local/bin/uv"
   environment:
     HOME: "{{ lookup('env','HOME') }}"
-  tags: [python, uv]
+  tags: [python-all, uv]
 
 - name: Verify uv command is available
   command: uv --version
   register: uv_check
   ignore_errors: yes
-  tags: [python, uv]
+  tags: [python-all, uv]
+
+- name: Install latest Python via uv
+  shell: uv python install
+  tags: [python-all, python, python-install]

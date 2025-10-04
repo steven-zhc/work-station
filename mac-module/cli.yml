@@ -5,71 +5,71 @@
   homebrew:
     name: fzf
     state: present
-  tags: [cli, fzf]
+  tags: [cli-all, fzf]
 
 - name: Install bat
   homebrew:
     name: bat
     state: present
-  tags: [cli, bat]
+  tags: [cli-all, bat]
 
 - name: Install httpie
   homebrew:
     name: httpie
     state: present
-  tags: [cli, httpie]
+  tags: [cli-all, httpie]
 
 - name: Install curl
   homebrew:
     name: curl
     state: present
-  tags: [cli, curl]
+  tags: [cli-all, curl]
 
 - name: Install tmux
   homebrew:
     name: tmux
     state: present
-  tags: [cli, tmux]
+  tags: [cli-all, tmux]
 
 - name: Install lazygit
   homebrew:
     name: lazygit
     state: present
-  tags: [cli, lazygit]
+  tags: [cli-all, lazygit]
 
 - name: Install neovim
   homebrew:
     name: neovim
     state: present
-  tags: [cli, neovim]
+  tags: [cli-all, neovim]
 
 - name: Backup existing neovim config
   shell: mv ~/.config/nvim ~/.config/nvim.bak
   args:
     creates: ~/.config/nvim.bak
   ignore_errors: yes
-  tags: [neovim, astronvim, cli]
+  tags: [neovim, astronvim, cli-all]
 
 - name: Backup existing neovim share
   shell: mv ~/.local/share/nvim ~/.local/share/nvim.bak
   args:
     creates: ~/.local/share/nvim.bak
   ignore_errors: yes
-  tags: [neovim, astronvim, cli]
+  tags: [neovim, astronvim, cli-all]
 
 - name: Backup existing neovim state
   shell: mv ~/.local/state/nvim ~/.local/state/nvim.bak
   args:
     creates: ~/.local/state/nvim.bak
   ignore_errors: yes
-  tags: [neovim, astronvim, cli]
+  tags: [neovim, astronvim, cli-all]
 
 - name: Backup existing neovim cache
   shell: mv ~/.cache/nvim ~/.cache/nvim.bak
   args:
     creates: ~/.cache/nvim.bak
   ignore_errors: yes
-  tags: [neovim, astronvim, cli]
+  tags: [neovim, astronvim, cli-all]
 
 - name: Clone AstroNvim configuration
   git:
@@ -77,46 +77,46 @@
     dest: "{{ lookup('env','HOME') }}/.config/nvim"
     clone: yes
     update: yes
-  tags: [neovim, astronvim, cli]
+  tags: [neovim, astronvim, cli-all]
 
 - name: Install jq
   homebrew:
     name: jq
     state: present
-  tags: [cli, jq]
+  tags: [cli-all, jq]
 
 - name: Install wget
   homebrew:
     name: wget
     state: present
-  tags: [cli, wget]
+  tags: [cli-all, wget]
 
 - name: Install zoxide
   homebrew:
     name: zoxide
     state: present
-  tags: [cli, zoxide]
+  tags: [cli-all, zoxide]
 
 - name: Install fd
   homebrew:
     name: fd
     state: present
-  tags: [cli, fd]
+  tags: [cli-all, fd]
 
 - name: Install ripgrep
   homebrew:
     name: ripgrep
     state: present
-  tags: [cli, ripgrep]
+  tags: [cli-all, ripgrep]
 
 - name: Tap wouterdebie/repo for i2cssh
   homebrew_tap:
     tap: wouterdebie/repo
     state: present
-  tags: [cli, i2cssh]
+  tags: [cli-all, i2cssh]
 
 - name: Install i2cssh
   homebrew:
     name: wouterdebie/repo/i2cssh
     state: present
-  tags: [cli, i2cssh]
+  tags: [cli-all, i2cssh]
