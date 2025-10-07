@@ -53,3 +53,9 @@
     name: rancher
     state: present
   tags: [app-all, rancher, docker, kubernetes]
+
+- name: Install Zettlr
+  homebrew_cask:
+    name: zettlr
+    state: present
+  tags: [app-all, zettlr, notes, markdown]
