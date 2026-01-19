@@ -6,5 +6,13 @@
   args:
     creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/claude-code"
   tags:
-    - ai
+    - ai-all
     - claude
+
+- name: Install Codex globally with pnpm
+  shell: pnpm install -g @openai/codex
+  args:
+    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/codex"
+  tags:
+    - ai-all
+    - codex

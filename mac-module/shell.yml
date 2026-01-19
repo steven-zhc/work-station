@@ -1,14 +1,6 @@
 ---
 # Shell Configuration
 
-- name: Adjust Fish shell path for Apple Silicon
-  set_fact:
-    fish_shell_path: /opt/homebrew/bin/fish
-  when: ansible_architecture == "arm64"
-  tags:
-    - shell-all
-    - fish_path
-
 - name: Install Fish shell
   homebrew:
     name: fish

@@ -9,9 +9,16 @@
     - java-all
     - jdk
 
+- name: Set OpenJDK path based on architecture
+  set_fact:
+    openjdk_path: "{{ '/opt/homebrew/opt/openjdk/libexec/openjdk.jdk' if ansible_architecture == 'arm64' else '/usr/local/opt/openjdk/libexec/openjdk.jdk' }}"
+  tags:
+    - java-all
+    - jdk
+
 - name: Create symlink for OpenJDK
   file:
-    src: /usr/local/opt/openjdk/libexec/openjdk.jdk
+    src: "{{ openjdk_path }}"
     dest: /Library/Java/JavaVirtualMachines/openjdk.jdk
     state: link
   become: yes

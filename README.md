@@ -40,15 +40,13 @@ brew install ansible
 
 ### Run Setup Modules
 ```bash
-ansible-playbook mac-local.yml --tags volta        # Node.js/Volta
-ansible-playbook mac-local.yml --tags ai           # AI tools (Claude Code)
-ansible-playbook mac-local.yml --tags apps         # GUI applications
-ansible-playbook mac-local.yml --tags shell --ask-become-pass  # Shell config
-ansible-playbook mac-local.yml --tags neovim       # Neovim editor
-ansible-playbook mac-local.yml --tags fonts        # Nerd fonts
-ansible-playbook mac-local.yml --tags cli          # CLI utilities
-ansible-playbook mac-local.yml --tags bun          # Bun runtime
-ansible-playbook mac-local.yml --tags python       # Python/uv
+ansible-playbook mac-local.yml --tags js,js-all            # Node.js
+ansible-playbook mac-local.yml --tags ai,ai-all            # AI tools (Claude Code)
+ansible-playbook mac-local.yml --tags app                  # GUI applications
+ansible-playbook mac-local.yml --tags shell,shell-all --ask-become-pass  # Shell config
+ansible-playbook mac-local.yml --tags font,font-all        # Nerd fonts
+ansible-playbook mac-local.yml --tags cli,cli-all          # CLI utilities
+ansible-playbook mac-local.yml --tags python,python-all    # Python/uv
 ```
 
 ## What Gets Installed

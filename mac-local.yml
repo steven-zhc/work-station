@@ -5,8 +5,8 @@
   # gather_facts: false
   vars:
     node_version: "24"
-    # Default to Intel path
-    fish_shell_path: /usr/local/bin/fish
+    # Set default fish shell path based on architecture
+    fish_shell_path: "{{ '/opt/homebrew/bin/fish' if ansible_architecture == 'arm64' else '/usr/local/bin/fish' }}"
   tasks:
     # Import modular tasks
     - name: Include js, Node.js and Bun setup
