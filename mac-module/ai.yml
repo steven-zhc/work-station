@@ -16,3 +16,11 @@
   tags:
     - ai-all
     - codex
+
+- name: Install specify-cli via uv
+  shell: uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+  args:
+    creates: "{{ lookup('env','HOME') }}/.local/bin/specify"
+  tags:
+    - ai-all
+    - specify

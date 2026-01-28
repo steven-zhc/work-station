@@ -59,3 +59,9 @@
     name: zettlr
     state: present
   tags: [app-all, zettlr, notes, markdown]
+
+- name: Install Caffeine
+  homebrew_cask:
+    name: caffeine
+    state: present
+  tags: [app-all, caffeine]

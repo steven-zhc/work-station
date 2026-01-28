@@ -40,3 +40,7 @@
     - name: Include Java development tools
       include_tasks: mac-module/java.yml
       tags: [java]
+
+    - name: Include Docker/Container tools
+      include_tasks: mac-module/docker.yml
+      tags: [docker]

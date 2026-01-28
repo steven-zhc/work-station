@@ -51,3 +51,11 @@
     - shell-all
     - starship
     - starship_config
+
+- name: Install flyctl
+  homebrew:
+    name: flyctl
+    state: present
+  tags:
+    - shell-all
+    - flyctl

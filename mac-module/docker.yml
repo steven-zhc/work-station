@@ -1,0 +1,14 @@
+---
+# Docker/Container Tools
+
+- name: Install podman
+  homebrew:
+    name: podman
+    state: present
+  tags: [docker-all, podman]
+
+- name: Install podman-compose
+  homebrew:
+    name: podman-compose
+    state: present
+  tags: [docker-all, podman-compose]
