@@ -88,3 +88,46 @@ Use the included scripts for enhanced productivity:
 ```
 
 The `tx` script provides intelligent workspace switching with tmux sessions for different project directories.
+
+## Secrets (macOS Keychain via keytar)
+
+This repo includes small helpers to store secrets in your OS credential store and inject them into a command without pasting tokens into chat or committing them.
+
+### Install deps (one-time)
+
+```bash
+npm install
+```
+
+### Store a secret
+
+Prefer stdin so it doesn’t land in shell history:
+
+```bash
+(echo -n 'YOUR_TOKEN') | ./script/secret.mjs set-stdin <service> <account>
+```
+
+Example:
+
+```bash
+(echo -n 'sk-...') | ./script/secret.mjs set-stdin openai steven
+```
+
+### Read a secret
+
+```bash
+./script/secret.mjs get openai steven
+```
+
+### Run a command with secrets injected
+
+```bash
+./script/run-with-secrets.mjs \
+  --map openai:steven:OPENAI_API_KEY \
+  --map stripe:work:STRIPE_API_KEY \
+  -- node ./your-script.mjs
+```
+
+Notes:
+- Secrets are pulled from Keychain at runtime and exist only in the child process environment.
+- Don’t print env vars in logs.

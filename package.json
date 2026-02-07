@@ -1,0 +1,25 @@
+{
+  "name": "work-station",
+  "version": "1.0.0",
+  "description": "Automated macOS development environment configuration using Ansible. Sets up a complete development workspace with tools, applications, shell configuration, and workspace management utilities.",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/steven-zhc/work-station.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "module",
+  "bugs": {
+    "url": "https://github.com/steven-zhc/work-station/issues"
+  },
+  "homepage": "https://github.com/steven-zhc/work-station#readme",
+  "private": "true",
+  "dependencies": {
+    "keytar": "^7.9.0"
+  }
+}
