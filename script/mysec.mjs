@@ -13,12 +13,17 @@
  *
  * Delete:
  *   ./script/mysec.mjs -d <service> <account> <KEY_NAME>
+ *
+ * List keys (no values):
+ *   ./script/mysec.mjs -l <service> <account>
  */
 
 import keytar from 'keytar';
 
 function usage(exitCode = 1) {
-  console.error(`\nUsage:\n  mysec.mjs <service> <account> <KEY_NAME> <secret|->\n  mysec.mjs <service> <account> <KEY_NAME>\n  mysec.mjs -d <service> <account> <KEY_NAME>\n\nExamples:\n  ./script/mysec.mjs vercel nextloom.ai GITHUB_TOKEN ghp_...\n  (echo -n 'ghp_...') | ./script/mysec.mjs vercel nextloom.ai GITHUB_TOKEN -\n  ./script/mysec.mjs vercel nextloom.ai GITHUB_TOKEN\n  ./script/mysec.mjs -d vercel nextloom.ai GITHUB_TOKEN\n`.trimStart());
+  console.error(
+    `\nUsage:\n  mysec.mjs <service> <account> <KEY_NAME> <secret|->\n  mysec.mjs <service> <account> <KEY_NAME>\n  mysec.mjs -d <service> <account> <KEY_NAME>\n  mysec.mjs -l <service> <account>\n\nExamples:\n  ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN ghp_...\n  (echo -n 'ghp_...') | ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN -\n  ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN\n  ./script/mysec.mjs -d vercel nextloom.ai-dev GITHUB_TOKEN\n  ./script/mysec.mjs -l vercel nextloom.ai-dev\n`.trimStart(),
+  );
   process.exit(exitCode);
 }
 
@@ -30,14 +35,34 @@ async function readAllStdin() {
 
 const argv = process.argv.slice(2);
 let del = false;
+let list = false;
 if (argv[0] === '-h' || argv[0] === '--help') usage(0);
 if (argv[0] === '-d' || argv[0] === '--delete') {
   del = true;
   argv.shift();
 }
+if (argv[0] === '-l' || argv[0] === '--list') {
+  list = true;
+  argv.shift();
+}
 
 const [service, account, keyName, value] = argv;
-if (!service || !account || !keyName) usage();
+if (!service || !account || (!list && !keyName)) usage();
+
+if (list) {
+  const prefix = `${account}:`;
+  const creds = await keytar.findCredentials(service);
+  const keys = creds
+    .map(c => c.account)
+    .filter(a => a.startsWith(prefix))
+    .map(a => a.slice(prefix.length))
+    .filter(k => k.length > 0)
+    .sort((a, b) => a.localeCompare(b));
+
+  // Print one key per line (no values)
+  for (const k of keys) console.log(k);
+  process.exit(0);
+}
 
 const accountKey = `${account}:${keyName}`;
 
