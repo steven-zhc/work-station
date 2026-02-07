@@ -122,9 +122,13 @@ Example:
 ### Run a command with secrets injected
 
 ```bash
+# exact list
 ./script/rw-mysec.mjs \
   openai:steven:OPENAI_API_KEY,stripe:work:STRIPE_API_KEY \
   -- node ./your-script.mjs
+
+# wildcard: inject ALL secrets that start with "vercel:nextloom.ai"
+./script/rw-mysec.mjs vercel:nextloom.ai -- node ./your-script.mjs
 ```
 
 Notes:
