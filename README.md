@@ -104,27 +104,26 @@ npm install
 Prefer stdin so it doesn’t land in shell history:
 
 ```bash
-(echo -n 'YOUR_TOKEN') | ./script/secret.mjs set-stdin <service> <account>
+(echo -n 'YOUR_TOKEN') | ./script/mysec.mjs <service> <account> <KEY_NAME> -
 ```
 
 Example:
 
 ```bash
-(echo -n 'sk-...') | ./script/secret.mjs set-stdin openai steven
+(echo -n 'sk-...') | ./script/mysec.mjs openai steven OPENAI_API_KEY -
 ```
 
 ### Read a secret
 
 ```bash
-./script/secret.mjs get openai steven
+./script/mysec.mjs openai steven OPENAI_API_KEY
 ```
 
 ### Run a command with secrets injected
 
 ```bash
-./script/run-with-secrets.mjs \
-  --map openai:steven:OPENAI_API_KEY \
-  --map stripe:work:STRIPE_API_KEY \
+./script/rw-mysec.mjs \
+  openai:steven:OPENAI_API_KEY,stripe:work:STRIPE_API_KEY \
   -- node ./your-script.mjs
 ```
 
