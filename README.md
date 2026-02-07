@@ -99,6 +99,15 @@ This repo includes small helpers to store secrets in your OS credential store an
 npm install
 ```
 
+### Naming convention (3 dimensions)
+
+We organize secrets by:
+- **service**: SaaS name (e.g. `vercel`, `stripe`, `openai`)
+- **account**: category (project/env/free-form), e.g. `nextloom.ai-dev`, `nextloom.ai-prod`
+- **KEY_NAME**: environment variable name, e.g. `GITHUB_TOKEN`, `DEPLOY_TOKEN`
+
+Recommendation: keep **account** free of `:` (use `-` or `/`) so wildcard lookups stay unambiguous.
+
 ### Store a secret
 
 Prefer stdin so it doesn’t land in shell history:
@@ -110,7 +119,12 @@ Prefer stdin so it doesn’t land in shell history:
 Example:
 
 ```bash
+# openai, personal
 (echo -n 'sk-...') | ./script/mysec.mjs openai steven OPENAI_API_KEY -
+
+# vercel, project=nextloom.ai, env=dev
+(echo -n '...') | ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN -
+(echo -n '...') | ./script/mysec.mjs vercel nextloom.ai-dev DEPLOY_TOKEN -
 ```
 
 ### Read a secret
@@ -127,8 +141,8 @@ Example:
   openai:steven:OPENAI_API_KEY,stripe:work:STRIPE_API_KEY \
   -- node ./your-script.mjs
 
-# wildcard: inject ALL secrets that start with "vercel:nextloom.ai"
-./script/rw-mysec.mjs vercel:nextloom.ai -- node ./your-script.mjs
+# wildcard: inject ALL secrets for vercel + category prefix (e.g. project/env)
+./script/rw-mysec.mjs vercel:nextloom.ai-dev -- node ./your-script.mjs
 ```
 
 Notes:
