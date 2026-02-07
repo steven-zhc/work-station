@@ -16,13 +16,16 @@
  *
  * List keys (no values):
  *   ./script/mysec.mjs -l <service> <account>
+ *
+ * List categories (no values):
+ *   ./script/mysec.mjs -L <service>
  */
 
 import keytar from 'keytar';
 
 function usage(exitCode = 1) {
   console.error(
-    `\nUsage:\n  mysec.mjs <service> <account> <KEY_NAME> <secret|->\n  mysec.mjs <service> <account> <KEY_NAME>\n  mysec.mjs -d <service> <account> <KEY_NAME>\n  mysec.mjs -l <service> <account>\n\nExamples:\n  ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN ghp_...\n  (echo -n 'ghp_...') | ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN -\n  ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN\n  ./script/mysec.mjs -d vercel nextloom.ai-dev GITHUB_TOKEN\n  ./script/mysec.mjs -l vercel nextloom.ai-dev\n`.trimStart(),
+    `\nUsage:\n  mysec.mjs <service> <account> <KEY_NAME> <secret|->\n  mysec.mjs <service> <account> <KEY_NAME>\n  mysec.mjs -d <service> <account> <KEY_NAME>\n  mysec.mjs -l <service> <account>\n  mysec.mjs -L <service>\n\nExamples:\n  ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN ghp_...\n  (echo -n 'ghp_...') | ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN -\n  ./script/mysec.mjs vercel nextloom.ai-dev GITHUB_TOKEN\n  ./script/mysec.mjs -d vercel nextloom.ai-dev GITHUB_TOKEN\n  ./script/mysec.mjs -l vercel nextloom.ai-dev\n  ./script/mysec.mjs -L vercel\n`.trimStart(),
   );
   process.exit(exitCode);
 }
@@ -36,6 +39,7 @@ async function readAllStdin() {
 const argv = process.argv.slice(2);
 let del = false;
 let list = false;
+let listCategories = false;
 if (argv[0] === '-h' || argv[0] === '--help') usage(0);
 if (argv[0] === '-d' || argv[0] === '--delete') {
   del = true;
@@ -45,9 +49,28 @@ if (argv[0] === '-l' || argv[0] === '--list') {
   list = true;
   argv.shift();
 }
+if (argv[0] === '-L' || argv[0] === '--list-categories') {
+  listCategories = true;
+  argv.shift();
+}
 
 const [service, account, keyName, value] = argv;
-if (!service || !account || (!list && !keyName)) usage();
+if (!service || (!listCategories && !account) || (!listCategories && !list && !keyName)) usage();
+
+if (listCategories) {
+  const creds = await keytar.findCredentials(service);
+  const cats = Array.from(
+    new Set(
+      creds
+        .map(c => c.account)
+        .map(a => a.split(':')[0])
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+
+  for (const c of cats) console.log(c);
+  process.exit(0);
+}
 
 if (list) {
   const prefix = `${account}:`;
