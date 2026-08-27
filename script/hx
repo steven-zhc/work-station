@@ -13,6 +13,7 @@ HX_CONFIG_DIR="${HX_CONFIG_DIR:-$HOME/.config/hx}"
 HX_CACHE_DIR="${HX_CACHE_DIR:-$HOME/.cache/hx}"
 ROOTS_FILE="$HX_CONFIG_DIR/roots"
 SPACES_FILE="$HX_CONFIG_DIR/spaces.toml"
+LOCAL_SPACES_FILE=".hx-spaces.toml"
 HISTORY_FILE="$HX_CACHE_DIR/history"
 HISTORY_MAX=20
 
@@ -80,9 +81,11 @@ Space layout:
   tab holding a plain shell. Both start in the project directory.
 
 Space sets:
-  A set is a group of spaces to bring up in one step, declared in TOML in
-  ~/.config/hx/spaces.toml. `hx -s work` opens all of them; `hx -s` with no
-  name opens the first set in the file.
+  A set is a group of spaces to bring up in one step, declared in TOML.
+  `hx -s work` opens all of them; `hx -s` with no name opens the first set in
+  the file. hx reads .hx-spaces.toml in the current directory when there is
+  one - a checkout describing its own spaces - and ~/.config/hx/spaces.toml
+  otherwise.
 
     [[set]]
     name = "work"
@@ -98,15 +101,27 @@ Space sets:
       [[set.space]]
       dir = "~/.dotfile"
 
-  Only dir is required. Each space is still laid out by its own .hx or the
-  default, an already-open one is left alone, and a directory that no longer
-  exists is skipped with a warning. -a overrides the per-space agent.
+  Only dir is required, and a relative one is resolved against the file that
+  declares it, so a local .hx-spaces.toml can just name its neighbours:
+
+    [[set]]
+    name = "all"
+      [[set.space]]
+      dir = "packages/api"
+      [[set.space]]
+      dir = "packages/web"
+
+  Each space is still laid out by its own .hx or the default, an already-open
+  one is left alone, and a directory that no longer exists is skipped with a
+  warning. -a overrides the per-space agent.
 
 Config:
-  ~/.config/hx/roots      where to look for projects, one path or glob per line
+  ~/.config/hx/roots        where to look for projects, one path or glob per line
   ~/.config/hx/spaces.toml  named sets of spaces for hx -s
-  <project>/.hx           that project's layout, taking precedence over the
-                          default above
+  ./.hx-spaces.toml         the same, for the current directory, and preferred
+                            over the global file when it exists
+  <project>/.hx             that project's layout, taking precedence over the
+                            default above
 
 Env:
   EDITOR                  editor used by the default layout (default: vi)
@@ -198,6 +213,9 @@ import os, sys, tomllib
 
 SEP = "\x1f"
 path, want = sys.argv[1], sys.argv[2]
+# Relative dirs are resolved against the file that declares them, so a local
+# .hx-spaces.toml can name its neighbours without spelling out full paths.
+base = os.path.dirname(os.path.abspath(path))
 try:
     with open(path, "rb") as fh:
         doc = tomllib.load(fh)
@@ -228,7 +246,10 @@ for si, space in enumerate(spaces):
     directory = space.get("dir")
     if not isinstance(directory, str) or not directory:
         sys.exit(f"hx: {path}: {where} needs a dir")
-    fields = [os.path.expanduser(directory).rstrip("/"),
+    resolved = os.path.expanduser(directory)
+    if not os.path.isabs(resolved):
+        resolved = os.path.join(base, resolved)
+    fields = [os.path.normpath(resolved).rstrip("/"),
               str(space.get("name", "") or ""),
               str(space.get("agent", "") or "")]
     if any(c in f for f in fields for c in "\t\n\x1f"):
@@ -587,7 +608,7 @@ attach_if_outside() {
 
 main() {
     local agent_kind="" worktree_branch="" query="" jump_back=0 use_set=0 set_name=""
-    local dir="" ws="-" key="" out="" rows="" line="" entries="" kind=""
+    local dir="" ws="-" key="" out="" rows="" line="" entries="" kind="" spaces_file=""
     local first_ws="" first_tab="" first_dir=""
     SEL_DIRS=(); SEL_WS=(); SEL_NAMES=(); SEL_AGENTS=()
 
@@ -617,9 +638,14 @@ main() {
         SEL_DIRS=("$dir"); SEL_WS=("-"); SEL_NAMES=(""); SEL_AGENTS=("")
     elif [[ $use_set == 1 ]]; then
         # One step: no picker, just open every space the named set declares.
-        [[ -f $SPACES_FILE ]] || die "no $SPACES_FILE yet - see hx -h for its format"
+        # A .hx-spaces.toml in the current directory describes that checkout's
+        # own spaces and wins over the global file.
+        spaces_file="$SPACES_FILE"
+        if [[ -f "$PWD/$LOCAL_SPACES_FILE" ]]; then spaces_file="$PWD/$LOCAL_SPACES_FILE"; fi
+        [[ -f $spaces_file ]] \
+            || die "no $LOCAL_SPACES_FILE here and no $SPACES_FILE - see hx -h for the format"
         require_bins python3
-        entries="$(spaces_from_toml "$SPACES_FILE" "$set_name")" || exit 1
+        entries="$(spaces_from_toml "$spaces_file" "$set_name")" || exit 1
         while IFS="$PLAN_SEP" read -r dir name agent; do
             [[ -n $dir ]] || continue
             if [[ ! -d $dir ]]; then echo "hx: $dir does not exist, skipped" >&2; continue; fi
