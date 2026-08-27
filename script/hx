@@ -12,7 +12,7 @@ set -euo pipefail
 HX_CONFIG_DIR="${HX_CONFIG_DIR:-$HOME/.config/hx}"
 HX_CACHE_DIR="${HX_CACHE_DIR:-$HOME/.cache/hx}"
 ROOTS_FILE="$HX_CONFIG_DIR/roots"
-SPACES_FILE="$HX_CONFIG_DIR/spaces.toml"
+SPACES_FILE="$HX_CONFIG_DIR/space.toml"
 LOCAL_SPACES_FILE=".hx-space.toml"
 LAYOUT_FILE=".hx.toml"
 HISTORY_FILE="$HX_CACHE_DIR/history"
@@ -47,12 +47,13 @@ Projects are listed with their agent state, most urgent first:
   blocked (waiting on you) > done (finished, unseen) > working > idle > closed
 
 Space layout:
-  A space is laid out from the project's own .hx.toml file when it has one, and from
+  A space is laid out from the project's own .hx.toml when it has one, and from
   the default layout otherwise. Either way it is read once, when the space is
-  created - edit .hx.toml and the space has to be closed and reopened to pick it up.
+  created - edit .hx.toml and the space has to be closed and reopened for it to
+  take effect.
 
-  .hx.toml is TOML (needs python3, whose tomllib reads it). One [[tab]] per tab, and
-  a [[tab.pane]] for each extra pane split off the one before it in that tab:
+  One [[tab]] per tab, and a [[tab.pane]] for each extra pane split off the one
+  before it in that tab (reading it needs python3, for its stdlib tomllib):
 
     [[tab]]
     name = "edit"
@@ -77,7 +78,7 @@ Space layout:
   size splits in half. Commands are sent to the pane's shell verbatim, so write
   them for your shell. Panes stack: the second one splits off the first.
 
-  The default layout, used when the project has no .hx.toml file, is the equivalent
+  The default layout, used when the project has no .hx.toml, is the equivalent
   of an "edit" tab running $EDITOR with a 15% shell below it, plus a "console"
   tab holding a plain shell. Both start in the project directory.
 
@@ -86,7 +87,7 @@ Space sets:
   `hx -s work` opens all of them; `hx -s` with no name opens the first set in
   the file. hx uses the nearest .hx-space.toml at or above the current
   directory when there is one - a checkout describing its own spaces - and
-  ~/.config/hx/spaces.toml otherwise.
+  ~/.config/hx/space.toml otherwise.
 
     [[set]]
     name = "work"
@@ -112,13 +113,13 @@ Space sets:
       [[set.space]]
       dir = "packages/web"
 
-  Each space is still laid out by its own .hx.toml or the default, an already-open
-  one is left alone, and a directory that no longer exists is skipped with a
-  warning. -a overrides the per-space agent.
+  Each space is still laid out by its own .hx.toml or the default, an
+  already-open one is left alone, and a directory that no longer exists is
+  skipped with a warning. -a overrides the per-space agent.
 
 Config:
   ~/.config/hx/roots        where to look for projects, one path or glob per line
-  ~/.config/hx/spaces.toml  named sets of spaces for hx -s
+  ~/.config/hx/space.toml   named sets of spaces for hx -s
   ./.hx-space.toml          the same, searched for from the current directory
                             upwards, and preferred over the global file
   <project>/.hx.toml        that project's layout, taking precedence over the
@@ -143,14 +144,14 @@ PLAN_SEP=$'\x1f'
 
 plan_line() { local IFS="$PLAN_SEP"; printf '%s\n' "$*"; }
 
-# Written directly, so a project without a .hx.toml file never needs the TOML reader.
+# Written directly, so a project without a .hx.toml never needs the TOML reader.
 default_plan() {
     plan_line tab  edit    "${EDITOR:-vi} ."
     plan_line pane shell   "" down 15
     plan_line tab  console ""
 }
 
-# Reads a project's .hx.toml (TOML) and prints the same plan. tomllib is stdlib from
+# Reads a project's .hx.toml and prints the same plan. tomllib is stdlib from
 # Python 3.11, so this needs no package beyond python3 itself.
 plan_from_toml() {
     python3 - "$1" <<'PY'
@@ -205,7 +206,7 @@ print("\n".join(lines))
 PY
 }
 
-# Reads ~/.config/hx/spaces.toml and prints the spaces of one named set, as
+# Reads ~/.config/hx/space.toml and prints the spaces of one named set, as
 #   dir<US>name<US>agent
 # per line. Without a name the first set in the file wins.
 # The nearest .hx-space.toml at or above the current directory, if any.
