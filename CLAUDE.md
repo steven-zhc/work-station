@@ -32,6 +32,9 @@ ansible-playbook mac-local.yml --tags python       # Python/uv setup
 # Launch tmux workspace selector
 ./script/tx
 
+# Launch herdr workspace selector (agent-state aware; see README for keys and .hx layouts)
+./script/hx
+
 # Available scripts in script/
 ./script/cht    # Cheat sheet tool
 ./script/px     # Process management
@@ -77,6 +80,6 @@ The Ansible playbook uses tags for modular installation:
 
 ## Development Workflow
 1. Use `ansible-playbook` with specific tags to install/update components
-2. Use `./script/tx` to quickly jump between workspaces in tmux
+2. Use `./script/tx` (tmux) or `./script/hx` (herdr) to quickly jump between workspaces
 3. The environment is optimized for terminal-based development with Fish shell
 4. Claude Code is installed globally and ready for use

@@ -56,7 +56,7 @@ ansible-playbook mac-local.yml --tags docker,docker-all    # Container tools (Po
 - **Editors**: Neovim, VS Code
 - **Terminal**: iTerm2, Fish shell with Starship prompt
 - **Version Control**: Git, Lazygit
-- **Workspace**: tmux with custom session management
+- **Workspace**: tmux and herdr with custom session management
 
 ### Runtimes & Package Managers
 - **Node.js**: Volta version manager, pnpm package manager
@@ -82,12 +82,47 @@ Use the included scripts for enhanced productivity:
 
 ```bash
 ./script/tx    # Launch tmux workspace selector
+./script/hx    # Launch herdr workspace selector
 ./script/cht   # Cheat sheet utility
 ./script/px    # Process management
 ./script/s     # Search utility
 ```
 
 The `tx` script provides intelligent workspace switching with tmux sessions for different project directories.
+
+### hx
+
+`hx` is the [herdr](https://herdr.dev) counterpart of `tx` (requires `herdr`, `fzf`, `jq`; uses
+`zoxide` when present). Each project becomes a herdr workspace, and because herdr tracks the state
+of the coding agent inside every pane, the picker doubles as a "what needs me" list: projects are
+labelled `blocked` / `done` / `working` / `idle` and sorted with the most urgent first. The preview
+pane shows the live screen of a running agent, or git status and log for a project that is not open.
+
+```bash
+hx [query]           # pick a project and open or focus it
+hx -                 # jump back to the previous workspace
+hx -a claude         # open it and start an agent in a fresh tab
+hx -w feat/login     # open a git worktree of it on that branch
+```
+
+Inside the picker: `enter` open/focus, `ctrl-w` new worktree, `ctrl-a` start an agent,
+`ctrl-x` close the workspace, `ctrl-d` remove a worktree checkout.
+
+Projects are discovered through `~/.config/hx/roots` (one path or glob per line, seeded on first
+run) plus any git repo that zoxide knows about. A project can define its own tabs and panes in a
+`.hx` file at its root:
+
+```
+edit: nvim .
+  shell 15%:
+server: pnpm dev
+  logs 30%: tail -f log
+console:
+```
+
+Each unindented line is a tab; an indented line splits below the previous pane, taking the given
+share of the height. Commands are sent to the pane's shell verbatim. Without a `.hx` file the
+layout is the `edit` + `console` pair that `tx` produced.
 
 ## Secrets (macOS Keychain via keytar)
 

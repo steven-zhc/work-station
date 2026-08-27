@@ -1,0 +1,477 @@
+#!/usr/bin/env bash
+#
+# hx - herdr workspace selector (the herdr counterpart of ./tx)
+#
+# Lists projects together with the state of whatever agent is running in them,
+# sorted so that whatever needs you comes first, and opens or focuses the pick.
+#
+# See `hx -h` for usage, keys and configuration.
+
+set -euo pipefail
+
+HX_CONFIG_DIR="${HX_CONFIG_DIR:-$HOME/.config/hx}"
+HX_CACHE_DIR="${HX_CACHE_DIR:-$HOME/.cache/hx}"
+ROOTS_FILE="$HX_CONFIG_DIR/roots"
+HISTORY_FILE="$HX_CACHE_DIR/history"
+HISTORY_MAX=20
+
+SELF="$(cd "$(dirname "$0")" && pwd)/$(basename "$0")"
+
+usage() {
+    cat <<'EOF'
+hx - herdr workspace selector
+
+Usage:
+  hx [query]              pick a project and open or focus it
+  hx -                    jump back to the previous workspace
+  hx -a KIND [query]      open the project and start an agent (claude, codex, ...)
+  hx -w BRANCH [query]    open a git worktree of the project on BRANCH
+  hx -h                   this help
+
+Picker keys:
+  enter    open / focus              ctrl-x   close the workspace
+  ctrl-w   new git worktree          ctrl-d   remove a worktree checkout
+  ctrl-a   start an agent in it
+
+Projects are listed with their agent state, most urgent first:
+  blocked (waiting on you) > done (finished, unseen) > working > idle > closed
+
+Config:
+  ~/.config/hx/roots      where to look for projects, one path or glob per line
+  <project>/.hx           per-project layout:
+
+                            label: command          a tab, root pane runs command
+                              label NN%: command    indented: split below the
+                                                    previous pane, NN% of height
+
+                          Commands are sent to the pane's shell verbatim.
+                          Without a .hx file the layout is:
+
+                            edit: $EDITOR .
+                              shell 15%:
+                            console:
+
+Env:
+  EDITOR                  editor used by the default layout (default: vi)
+  HX_SESSION              herdr session name to use
+EOF
+}
+
+die() { echo "hx: $*" >&2; exit 1; }
+
+trim() { printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
+
+default_layout() {
+    printf '%s\n' "edit: ${EDITOR:-vi} ." "  shell 15%:" "console:"
+}
+
+# ---------------------------------------------------------------- herdr access
+
+require_bins() {
+    local bin
+    for bin in "$@"; do
+        command -v "$bin" >/dev/null 2>&1 || die "$bin is required but not installed"
+    done
+}
+
+# The CLI talks to a running server over the local socket, so make sure one is
+# up before reading or creating any topology.
+ensure_server() {
+    herdr status server >/dev/null 2>&1 && return 0
+    nohup herdr server >/dev/null 2>&1 &
+    local _i
+    for _i in $(seq 1 50); do
+        herdr status server >/dev/null 2>&1 && return 0
+        sleep 0.1
+    done
+    die "could not reach a herdr server"
+}
+
+herdr_json() { herdr "$@" 2>/dev/null || echo '{}'; }
+
+# herdr nests its JSON differently per command, so every lookup below walks the
+# whole document instead of hard-coding a path, and accepts a few plausible
+# spellings per field. This is the one place to fix if a response shape changes.
+JQ_LIB='
+def pick(fields): [fields] | map(select(type == "string")) | first // "";
+def wlabel: pick(.label?, .name?);
+def wcwd:   pick(.cwd?, .path?, .directory?);
+def aname:  pick(.name?, .agent?, .agent_name?, .kind?);
+def astate: pick(.state?, .status?, .agent_state?, .lifecycle?) | ascii_downcase;
+def owner($o): ($o.workspace_id? | strings) // (($o.pane_id? // "") | split(":") | .[0]);
+def workspaces: [.. | objects
+    | select(has("workspace_id") and (has("pane_id") | not) and (has("tab_id") | not))]
+    | unique_by(.workspace_id);
+def panes: [.. | objects | select(has("pane_id"))] | unique_by(.pane_id);
+def agentlist: [.. | objects | select(has("pane_id") and astate != "")]
+    | unique_by(.pane_id);
+def rank($s): {"blocked":0,"done":1,"working":2,"unknown":3,"idle":4}[$s] // 3;
+def pad($n): . as $s | ($n - ($s | length)) as $k
+    | if $k > 0 then $s + (" " * $k) else $s end;
+'
+
+# --------------------------------------------------------------- project roots
+
+seed_roots_file() {
+    [[ -f $ROOTS_FILE ]] && return 0
+    mkdir -p "$HX_CONFIG_DIR"
+    cat > "$ROOTS_FILE" <<'EOF'
+# hx project roots - one path or glob per line, ~ is expanded.
+# Git repos that zoxide knows about are picked up automatically as well.
+~/.dotfile
+~/Workspace/*
+~/Workspace/*/*
+EOF
+    return 0
+}
+
+candidate_dirs() {
+    local line f
+    {
+        while IFS= read -r line; do
+            line="${line%%#*}"
+            line="$(trim "$line")"
+            [[ -z $line ]] && continue
+            line="${line/#\~/$HOME}"
+            for f in $line; do           # deliberately unquoted: expand the glob
+                if [[ -d $f ]]; then printf '%s\n' "${f%/}"; fi
+            done
+        done < "$ROOTS_FILE"
+
+        if command -v zoxide >/dev/null 2>&1; then
+            while IFS= read -r f; do
+                if [[ -d "$f/.git" ]]; then printf '%s\n' "${f%/}"; fi
+            done < <(zoxide query -l 2>/dev/null || true)
+        fi
+    } | awk '!seen[$0]++'
+}
+
+# Order closed projects by zoxide frecency first, then alphabetically.
+rank_dirs() {
+    local frecent=""
+    if command -v zoxide >/dev/null 2>&1; then
+        frecent="$(zoxide query -l 2>/dev/null || true)"
+    fi
+    awk -v frecent="$frecent" '
+        BEGIN {
+            n = split(frecent, f, "\n")
+            for (i = 1; i <= n; i++) { sub(/\/$/, "", f[i]); if (!(f[i] in ord)) ord[f[i]] = i }
+        }
+        { printf "%06d\t%s\n", ($0 in ord ? ord[$0] : 999999), $0 }
+    ' | sort -t$'\t' -k1,1n -k2,2 | cut -f2-
+}
+
+# ---------------------------------------------------------------- row building
+#
+# Rows are tab separated; field 7 is the only one fzf displays:
+#   1 rank  2 state  3 workspace_id  4 pane_id  5 agent  6 cwd  7 display
+# Empty machine fields are written as "-" so they survive fzf's {n} expansion.
+
+build_rows() {
+    local ws_json agents_json panes_json open_rows open_cwds
+
+    ws_json="$(herdr_json workspace list)"
+    agents_json="$(herdr_json agent list)"
+    panes_json="$(herdr_json pane list)"
+
+    open_rows="$(jq -rn \
+        --argjson ws "$ws_json" --argjson ag "$agents_json" --argjson pn "$panes_json" \
+        --arg home "$HOME" "$JQ_LIB"'
+        ($ag | agentlist | map({ws: owner(.), pane: .pane_id, name: aname, state: astate})) as $agents
+        | ($pn | panes | map({ws: owner(.), pane: .pane_id})) as $panes
+        | $ws | workspaces
+        | map(
+            . as $w
+            | $w.workspace_id as $id
+            | ($agents | map(select(.ws == $id)) | sort_by(rank(.state))) as $mine
+            | ($mine | first) as $top
+            | (if $top then $top.state else "idle" end) as $state
+            | (if $top then $top.pane
+               else (($panes | map(select(.ws == $id)) | first).pane // "") end) as $pane
+            | ($w | wcwd) as $cwd
+            | {
+                rank:  rank($state),
+                state: $state,
+                id:    $id,
+                pane:  (if $pane == "" then "-" else $pane end),
+                agent: (if $top != null and $top.name != "" then $top.name else "-" end),
+                cwd:   (if $cwd  == "" then "-" else $cwd  end),
+                label: (if ($w | wlabel) != "" then ($w | wlabel)
+                        else ($cwd | split("/") | last) end)
+              }
+          )
+        | sort_by(.rank, .label)
+        | .[]
+        | (if (.cwd | startswith($home)) then "~" + (.cwd | ltrimstr($home)) else .cwd end) as $short
+        | ({"blocked":"\u001b[1;31m","done":"\u001b[1;32m","working":"\u001b[1;33m"}[.state]
+           // "\u001b[2m") as $colour
+        | [ (.rank | tostring), .state, .id, .pane, .agent, .cwd,
+            ($colour + (.state | pad(8)) + "\u001b[0m " + ($short | pad(38))
+             + (if .agent == "-" then "" else " \u001b[2m" + .agent + "\u001b[0m" end))
+          ] | @tsv
+    ')"
+
+    if [[ -n $open_rows ]]; then printf '%s\n' "$open_rows"; fi
+
+    # Everything on disk that is not already an open workspace.
+    open_cwds="$(printf '%s\n' "$open_rows" | cut -f6 | grep -v '^-\{0,1\}$' || true)"
+    candidate_dirs \
+        | { grep -vxF "${open_cwds:-$'\001'}" || true; } \
+        | rank_dirs \
+        | while IFS= read -r dir; do
+            printf '5\t-\t-\t-\t-\t%s\t         \033[0m%s\n' "$dir" "${dir/#$HOME/\~}"
+          done
+}
+
+# ------------------------------------------------------------- open and layout
+
+# Sets WS_ID. Creates the workspace and applies its layout when it is not open.
+open_or_focus() {
+    local dir="$1" name id created tab pane
+    name="$(basename "$dir" | tr . '_')"
+
+    id="$(herdr_json workspace list | jq -r --arg cwd "$dir" --arg label "$name" "$JQ_LIB"'
+        workspaces | map(select(wcwd == $cwd or wlabel == $label)) | first | .workspace_id // empty')"
+
+    if [[ -z $id ]]; then
+        echo "Create workspace $name"
+        created="$(herdr workspace create --cwd "$dir" --label "$name" --focus)"
+        id="$(echo "$created" | jq -r '.result.workspace.workspace_id')"
+        tab="$(echo "$created" | jq -r '.result.tab.tab_id')"
+        pane="$(echo "$created" | jq -r '.result.root_pane.pane_id')"
+        apply_layout "$dir" "$id" "$tab" "$pane"
+        herdr tab focus "${LAYOUT_FIRST_TAB:-$tab}" >/dev/null
+    else
+        herdr workspace focus "$id" >/dev/null
+    fi
+
+    WS_ID="$id"
+    history_push "$dir"
+}
+
+# Reads the project's .hx (or the built-in default) and builds the topology.
+# Sets LAYOUT_FIRST_TAB so the caller can focus the tab the layout starts with.
+apply_layout() {
+    local dir="$1" ws="$2" root_tab="$3" root_pane="$4"
+    local layout line label cmd pct ratio resp cur_pane tab_id first=1
+    LAYOUT_FIRST_TAB=""
+
+    if [[ -f "$dir/.hx" ]]; then layout="$(cat "$dir/.hx")"; else layout="$(default_layout)"; fi
+
+    cur_pane="$root_pane"
+
+    # Read on fd 3 so the herdr calls below keep their own stdin.
+    while IFS= read -r line <&3; do
+        case "$(trim "$line")" in ''|'#'*) continue ;; esac
+        if [[ $line != *:* ]]; then
+            echo "hx: skipping layout line without ':' -> $line" >&2
+            continue
+        fi
+
+        label="$(trim "${line%%:*}")"
+        cmd="$(trim "${line#*:}")"
+
+        pct=""
+        if [[ $label =~ ^(.*[^[:space:]])[[:space:]]+([0-9]+)%$ ]]; then
+            label="${BASH_REMATCH[1]}"; pct="${BASH_REMATCH[2]}"
+        elif [[ $label =~ ^([0-9]+)%$ ]]; then
+            pct="${BASH_REMATCH[1]}"; label=""
+        fi
+
+        if [[ $line =~ ^[[:space:]] ]]; then
+            # --ratio is the share kept by the first (top) pane.
+            ratio="$(awk -v p="${pct:-50}" 'BEGIN { printf "%.2f", (100 - p) / 100 }')"
+            resp="$(herdr pane split "$cur_pane" --direction down --ratio "$ratio" \
+                --cwd "$dir" --no-focus)"
+            cur_pane="$(echo "$resp" | jq -r '.result.pane.pane_id')"
+            if [[ -n $label ]]; then herdr pane rename "$cur_pane" "$label" >/dev/null; fi
+        else
+            if [[ $first == 1 ]]; then
+                # The workspace already came with a tab and a root pane; the
+                # only thing missing is the label the layout asks for.
+                tab_id="$root_tab"
+                cur_pane="$root_pane"
+                first=0
+                if [[ -n $label ]]; then herdr tab rename "$tab_id" "$label" >/dev/null; fi
+            else
+                resp="$(herdr tab create --workspace "$ws" --cwd "$dir" \
+                    --label "${label:-shell}" --no-focus)"
+                tab_id="$(echo "$resp" | jq -r '.result.tab.tab_id')"
+                cur_pane="$(echo "$resp" | jq -r '.result.root_pane.pane_id')"
+            fi
+            if [[ -z $LAYOUT_FIRST_TAB ]]; then LAYOUT_FIRST_TAB="$tab_id"; fi
+        fi
+
+        if [[ -n $cmd ]]; then herdr pane run "$cur_pane" "$cmd" >/dev/null; fi
+    done 3<<< "$layout"
+
+    return 0
+}
+
+# ---------------------------------------------------------------------- extras
+
+# Agent names must match [a-z][a-z0-9_-]{0,31}.
+agent_name_for() {
+    local base
+    base="$(printf '%s' "$1" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9_-' '-' \
+            | sed 's/-\{2,\}/-/g; s/^[^a-z]*//; s/-*$//')"
+    printf '%.32s' "${base:-agent}-$2"
+}
+
+start_agent() {  # ws_id cwd kind
+    local ws="$1" dir="$2" kind="$3" resp pane name
+    # A fresh tab guarantees the clean, idle shell that `agent start` requires.
+    resp="$(herdr tab create --workspace "$ws" --cwd "$dir" --label "$kind" --focus)"
+    pane="$(echo "$resp" | jq -r '.result.root_pane.pane_id')"
+    name="$(agent_name_for "$(basename "$dir")" "$kind")"
+    echo "Starting $kind as '$name'"
+    herdr agent start "$name" --kind "$kind" --pane "$pane" >/dev/null
+}
+
+make_worktree() {  # ws_id cwd branch
+    local ws="$1" dir="$2" branch="$3"
+    [[ -d "$dir/.git" ]] || die "$dir is not a git repository"
+    if [[ -n $ws && $ws != "-" ]]; then
+        herdr worktree create --workspace "$ws" --branch "$branch" --focus >/dev/null
+    else
+        herdr worktree create --cwd "$dir" --branch "$branch" --focus >/dev/null
+    fi
+}
+
+remove_worktree() {  # ws_id
+    local ws="$1" yn
+    [[ -n $ws && $ws != "-" ]] || die "that project is not open, nothing to remove"
+    if herdr worktree remove --workspace "$ws" >/dev/null 2>&1; then return 0; fi
+    read -r -p "git refused (dirty checkout?) - remove anyway? [y/N] " yn
+    case "$yn" in
+        [yY]*) herdr worktree remove --workspace "$ws" --force >/dev/null ;;
+        *)     echo "left alone" ;;
+    esac
+}
+
+# --------------------------------------------------------------------- history
+
+history_push() {
+    local dir="$1"
+    mkdir -p "$HX_CACHE_DIR"
+    {
+        printf '%s\n' "$dir"
+        if [[ -f $HISTORY_FILE ]]; then grep -vxF "$dir" "$HISTORY_FILE" || true; fi
+    } | head -"$HISTORY_MAX" > "$HISTORY_FILE.tmp"
+    mv "$HISTORY_FILE.tmp" "$HISTORY_FILE"
+}
+
+previous_dir() {
+    [[ -f $HISTORY_FILE ]] || return 1
+    local current=""
+    if [[ -n ${HERDR_WORKSPACE_ID:-} ]]; then
+        current="$(herdr_json workspace get "$HERDR_WORKSPACE_ID" \
+            | jq -r "$JQ_LIB"'workspaces | first | wcwd // empty' || true)"
+    fi
+    grep -vxF "${current:-$'\001'}" "$HISTORY_FILE" | head -1
+}
+
+# --------------------------------------------------------------------- preview
+
+cmd_preview() {  # state ws_id pane_id cwd
+    local pane="${3:--}" dir="${4:-}" readme
+    if [[ $pane != "-" ]]; then
+        herdr pane read "$pane" --source visible --ansi 2>/dev/null && return 0
+    fi
+    [[ -d $dir ]] || { echo "$dir (missing)"; return 0; }
+    if [[ -d "$dir/.git" ]]; then
+        git -C "$dir" -c color.ui=always status -sb 2>/dev/null | head -15 || true
+        echo
+        git -C "$dir" -c color.ui=always log --oneline -10 2>/dev/null || true
+    else
+        ls -A "$dir" | head -30 || true
+    fi
+    for readme in README.md readme.md README; do
+        if [[ -f "$dir/$readme" ]]; then
+            echo; echo "--- $readme ---"; head -20 "$dir/$readme"; break
+        fi
+    done
+    return 0
+}
+
+# ------------------------------------------------------------------------ main
+
+attach_if_outside() {
+    [[ -n ${HERDR_ENV:-} ]] && return 0
+    if [[ -n ${HX_SESSION:-} ]]; then exec herdr --session "$HX_SESSION"; fi
+    exec herdr
+}
+
+main() {
+    local agent_kind="" worktree_branch="" query="" jump_back=0
+    local dir="" state="-" ws="-" pane="-" agent="-" key="" out="" row=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --preview)     shift; cmd_preview "$@"; return 0 ;;
+            -h|--help)     usage; return 0 ;;
+            -)             jump_back=1; shift ;;
+            -a|--agent)    agent_kind="${2:-}";     [[ -n $agent_kind ]]      || die "-a needs an agent kind"; shift 2 ;;
+            -w|--worktree) worktree_branch="${2:-}"; [[ -n $worktree_branch ]] || die "-w needs a branch";     shift 2 ;;
+            -*)            die "unknown option $1" ;;
+            *)             query="$1"; shift ;;
+        esac
+    done
+
+    require_bins herdr fzf jq
+    if [[ -n ${HX_SESSION:-} ]]; then export HERDR_SESSION="$HX_SESSION"; fi
+    seed_roots_file
+    ensure_server
+
+    if [[ $jump_back == 1 ]]; then
+        dir="$(previous_dir || true)"
+        [[ -n $dir ]] || die "no previous workspace"
+    else
+        out="$(build_rows | fzf --ansi --delimiter=$'\t' --with-nth=7 \
+                --query="$query" \
+                --expect=ctrl-w,ctrl-a,ctrl-x,ctrl-d \
+                --header='enter open   ctrl-w worktree   ctrl-a agent   ctrl-x close   ctrl-d rm worktree' \
+                --preview="$SELF --preview {2} {3} {4} {6}" \
+                --preview-window='right:55%')" || out=""
+        [[ -n $out ]] || return 0
+        key="$(printf '%s' "$out" | head -1)"
+        row="$(printf '%s' "$out" | sed -n '2p')"
+        [[ -n $row ]] || return 0
+        IFS=$'\t' read -r _ state ws pane agent dir _ <<< "$row"
+    fi
+
+    case "$key" in
+        ctrl-x)
+            [[ $ws != "-" ]] || die "that project is not open"
+            herdr workspace close "$ws" >/dev/null
+            echo "Closed $dir"
+            return 0 ;;
+        ctrl-d)
+            remove_worktree "$ws"
+            return 0 ;;
+        ctrl-w)
+            if [[ -z $worktree_branch ]]; then read -r -p "branch: " worktree_branch; fi
+            [[ -n $worktree_branch ]] || die "no branch given"
+            make_worktree "$ws" "$dir" "$worktree_branch"
+            attach_if_outside
+            return 0 ;;
+        ctrl-a)
+            if [[ -z $agent_kind ]]; then read -r -p "agent kind [claude]: " agent_kind; fi
+            agent_kind="${agent_kind:-claude}" ;;
+    esac
+
+    if [[ -n $worktree_branch ]]; then
+        open_or_focus "$dir"
+        make_worktree "$WS_ID" "$dir" "$worktree_branch"
+        attach_if_outside
+        return 0
+    fi
+
+    open_or_focus "$dir"
+
+    if [[ -n $agent_kind ]]; then start_agent "$WS_ID" "$dir" "$agent_kind"; fi
+
+    attach_if_outside
+}
+
+main "$@"

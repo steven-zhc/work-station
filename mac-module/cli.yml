@@ -31,6 +31,12 @@
     state: present
   tags: [cli-all, tmux]
 
+- name: Install herdr
+  homebrew:
+    name: herdr
+    state: present
+  tags: [cli-all, herdr]
+
 - name: Install lazygit
   homebrew:
     name: lazygit
