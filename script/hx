@@ -42,20 +42,45 @@ ctrl-w and ctrl-d act on a single project, so mark exactly one for those.
 Projects are listed with their agent state, most urgent first:
   blocked (waiting on you) > done (finished, unseen) > working > idle > closed
 
+Space layout:
+  A space is laid out from the project's own .hx file when it has one, and from
+  the default layout otherwise. Either way it is read once, when the space is
+  created - edit .hx and the space has to be closed and reopened to pick it up.
+
+  .hx is TOML (needs python3, whose tomllib reads it). One [[tab]] per tab, and
+  a [[tab.pane]] for each extra pane split off the one before it in that tab:
+
+    [[tab]]
+    name = "edit"
+    command = "nvim ."
+      [[tab.pane]]
+      name = "shell"
+      size = 15               # percent of the space the new pane takes
+      split = "down"          # "down" (default) or "right"
+
+    [[tab]]
+    name = "server"
+    command = "pnpm dev"
+      [[tab.pane]]
+      name = "logs"
+      command = "tail -f log"
+      size = 30
+
+    [[tab]]
+    name = "console"
+
+  Every key is optional: a tab with no command is a plain shell, a pane with no
+  size splits in half. Commands are sent to the pane's shell verbatim, so write
+  them for your shell. Panes stack: the second one splits off the first.
+
+  The default layout, used when the project has no .hx file, is the equivalent
+  of an "edit" tab running $EDITOR with a 15% shell below it, plus a "console"
+  tab holding a plain shell. Both start in the project directory.
+
 Config:
   ~/.config/hx/roots      where to look for projects, one path or glob per line
-  <project>/.hx           per-project layout:
-
-                            label: command          a tab, root pane runs command
-                              label NN%: command    indented: split below the
-                                                    previous pane, NN% of height
-
-                          Commands are sent to the pane's shell verbatim.
-                          Without a .hx file the layout is:
-
-                            edit: $EDITOR .
-                              shell 15%:
-                            console:
+  <project>/.hx           that project's layout, taking precedence over the
+                          default above
 
 Env:
   EDITOR                  editor used by the default layout (default: vi)
@@ -67,8 +92,75 @@ die() { echo "hx: $*" >&2; exit 1; }
 
 trim() { printf '%s' "$1" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//'; }
 
-default_layout() {
-    printf '%s\n' "edit: ${EDITOR:-vi} ." "  shell 15%:" "console:"
+# A layout is normalised into a plan before anything is built, one tab or pane
+# per line:  tab<US>name<US>command
+#            pane<US>name<US>command<US>down|right<US>percent
+# The separator is US (0x1f) rather than a tab because tab counts as IFS
+# whitespace, which would collapse the empty fields of a pane with no command.
+PLAN_SEP=$'\x1f'
+
+plan_line() { local IFS="$PLAN_SEP"; printf '%s\n' "$*"; }
+
+# Written directly, so a project without a .hx file never needs the TOML reader.
+default_plan() {
+    plan_line tab  edit    "${EDITOR:-vi} ."
+    plan_line pane shell   "" down 15
+    plan_line tab  console ""
+}
+
+# Reads a project's .hx (TOML) and prints the same plan. tomllib is stdlib from
+# Python 3.11, so this needs no package beyond python3 itself.
+plan_from_toml() {
+    python3 - "$1" <<'PY'
+import sys, tomllib
+
+SEP = "\x1f"
+path = sys.argv[1]
+try:
+    with open(path, "rb") as fh:
+        doc = tomllib.load(fh)
+except (OSError, tomllib.TOMLDecodeError) as exc:
+    sys.exit(f"hx: {path}: {exc}")
+
+def text(table, key, where):
+    value = table.get(key, "")
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        sys.exit(f"hx: {path}: {where}.{key} must be a string")
+    if any(c in value for c in "\t\n\x1f"):
+        sys.exit(f"hx: {path}: {where}.{key} must not contain tabs or newlines")
+    return value
+
+tabs = doc.get("tab", [])
+if not isinstance(tabs, list) or not tabs:
+    sys.exit(f"hx: {path}: needs at least one [[tab]]")
+
+lines = []
+for ti, tab in enumerate(tabs):
+    where = f"tab[{ti}]"
+    if not isinstance(tab, dict):
+        sys.exit(f"hx: {path}: {where} must be a table")
+    lines.append(SEP.join(["tab", text(tab, "name", where), text(tab, "command", where)]))
+
+    panes = tab.get("pane", [])
+    if not isinstance(panes, list):
+        sys.exit(f"hx: {path}: {where}.pane must be a list of tables")
+    for pi, pane in enumerate(panes):
+        pwhere = f"{where}.pane[{pi}]"
+        if not isinstance(pane, dict):
+            sys.exit(f"hx: {path}: {pwhere} must be a table")
+        split = pane.get("split", "down")
+        if split not in ("down", "right"):
+            sys.exit(f"hx: {path}: {pwhere}.split must be \"down\" or \"right\"")
+        size = pane.get("size", 50)
+        if not isinstance(size, int) or isinstance(size, bool) or not 1 <= size <= 99:
+            sys.exit(f"hx: {path}: {pwhere}.size must be an integer between 1 and 99")
+        lines.append(SEP.join(
+            ["pane", text(pane, "name", pwhere), text(pane, "command", pwhere), split, str(size)]))
+
+print("\n".join(lines))
+PY
 }
 
 # ---------------------------------------------------------------- herdr access
@@ -233,7 +325,7 @@ build_rows() {
 
 # Sets WS_ID. Creates the workspace and applies its layout when it is not open.
 open_or_focus() {
-    local dir="$1" name id created tab pane
+    local dir="$1" name id created tab pane plan
     name="$(basename "$dir" | tr . '_')"
 
     id="$(herdr_json workspace list | jq -r --arg cwd "$dir" --arg label "$name" "$JQ_LIB"'
@@ -241,12 +333,16 @@ open_or_focus() {
 
     WS_TAB=""
     if [[ -z $id ]]; then
+        # Resolve the layout before creating anything: a broken .hx should stop
+        # here rather than leave an empty space behind.
+        plan="$(layout_plan "$dir")" || exit 1
+
         echo "Create space $name"
         created="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus)"
         id="$(echo "$created" | jq -r '.result.workspace.workspace_id')"
         tab="$(echo "$created" | jq -r '.result.tab.tab_id')"
         pane="$(echo "$created" | jq -r '.result.root_pane.pane_id')"
-        apply_layout "$dir" "$id" "$tab" "$pane"
+        apply_plan "$plan" "$dir" "$id" "$tab" "$pane"
         WS_TAB="${LAYOUT_FIRST_TAB:-$tab}"
     fi
 
@@ -261,61 +357,60 @@ focus_space() {  # ws_id [tab_id]
     if [[ -n ${2:-} ]]; then herdr tab focus "$2" >/dev/null; fi
 }
 
-# Reads the project's .hx (or the built-in default) and builds the topology.
-# Sets LAYOUT_FIRST_TAB so the caller can focus the tab the layout starts with.
-apply_layout() {
-    local dir="$1" ws="$2" root_tab="$3" root_pane="$4"
-    local layout line label cmd pct ratio resp cur_pane tab_id first=1
-    LAYOUT_FIRST_TAB=""
+# layout_plan resolves a project's layout - its own .hx, or the default - into
+# the plan format described above, and fails without touching herdr if the .hx
+# is broken. apply_plan then builds it, setting LAYOUT_FIRST_TAB so the caller
+# can focus the tab the layout starts with.
+layout_plan() {
+    local dir="$1"
+    if [[ -f "$dir/.hx" ]]; then
+        require_bins python3
+        plan_from_toml "$dir/.hx"
+    else
+        default_plan
+    fi
+}
 
-    if [[ -f "$dir/.hx" ]]; then layout="$(cat "$dir/.hx")"; else layout="$(default_layout)"; fi
+apply_plan() {
+    local plan="$1" dir="$2" ws="$3" root_tab="$4" root_pane="$5"
+    local kind name cmd split size ratio resp cur_pane tab_id first=1
+    LAYOUT_FIRST_TAB=""
 
     cur_pane="$root_pane"
 
     # Read on fd 3 so the herdr calls below keep their own stdin.
-    while IFS= read -r line <&3; do
-        case "$(trim "$line")" in ''|'#'*) continue ;; esac
-        if [[ $line != *:* ]]; then
-            echo "hx: skipping layout line without ':' -> $line" >&2
-            continue
-        fi
-
-        label="$(trim "${line%%:*}")"
-        cmd="$(trim "${line#*:}")"
-
-        pct=""
-        if [[ $label =~ ^(.*[^[:space:]])[[:space:]]+([0-9]+)%$ ]]; then
-            label="${BASH_REMATCH[1]}"; pct="${BASH_REMATCH[2]}"
-        elif [[ $label =~ ^([0-9]+)%$ ]]; then
-            pct="${BASH_REMATCH[1]}"; label=""
-        fi
-
-        if [[ $line =~ ^[[:space:]] ]]; then
-            # --ratio is the share kept by the first (top) pane.
-            ratio="$(awk -v p="${pct:-50}" 'BEGIN { printf "%.2f", (100 - p) / 100 }')"
-            resp="$(herdr pane split "$cur_pane" --direction down --ratio "$ratio" \
-                --cwd "$dir" --no-focus)"
-            cur_pane="$(echo "$resp" | jq -r '.result.pane.pane_id')"
-            if [[ -n $label ]]; then herdr pane rename "$cur_pane" "$label" >/dev/null; fi
-        else
-            if [[ $first == 1 ]]; then
-                # The workspace already came with a tab and a root pane; the
-                # only thing missing is the label the layout asks for.
-                tab_id="$root_tab"
-                cur_pane="$root_pane"
-                first=0
-                if [[ -n $label ]]; then herdr tab rename "$tab_id" "$label" >/dev/null; fi
-            else
-                resp="$(herdr tab create --workspace "$ws" --cwd "$dir" \
-                    --label "${label:-shell}" --no-focus)"
-                tab_id="$(echo "$resp" | jq -r '.result.tab.tab_id')"
-                cur_pane="$(echo "$resp" | jq -r '.result.root_pane.pane_id')"
-            fi
-            if [[ -z $LAYOUT_FIRST_TAB ]]; then LAYOUT_FIRST_TAB="$tab_id"; fi
-        fi
+    while IFS="$PLAN_SEP" read -r kind name cmd split size <&3; do
+        [[ -n $kind ]] || continue
+        case "$kind" in
+            pane)
+                # --ratio is the share kept by the first (top or left) pane.
+                ratio="$(awk -v p="$size" 'BEGIN { printf "%.2f", (100 - p) / 100 }')"
+                resp="$(herdr pane split "$cur_pane" --direction "$split" --ratio "$ratio" \
+                    --cwd "$dir" --no-focus)"
+                cur_pane="$(echo "$resp" | jq -r '.result.pane.pane_id')"
+                if [[ -n $name ]]; then herdr pane rename "$cur_pane" "$name" >/dev/null; fi
+                ;;
+            tab)
+                if [[ $first == 1 ]]; then
+                    # The workspace already came with a tab and a root pane; the
+                    # only thing missing is the name the layout asks for.
+                    tab_id="$root_tab"
+                    cur_pane="$root_pane"
+                    first=0
+                    if [[ -n $name ]]; then herdr tab rename "$tab_id" "$name" >/dev/null; fi
+                else
+                    resp="$(herdr tab create --workspace "$ws" --cwd "$dir" \
+                        --label "${name:-shell}" --no-focus)"
+                    tab_id="$(echo "$resp" | jq -r '.result.tab.tab_id')"
+                    cur_pane="$(echo "$resp" | jq -r '.result.root_pane.pane_id')"
+                fi
+                if [[ -z $LAYOUT_FIRST_TAB ]]; then LAYOUT_FIRST_TAB="$tab_id"; fi
+                ;;
+            *) echo "hx: ignoring unknown plan entry '$kind'" >&2 ;;
+        esac
 
         if [[ -n $cmd ]]; then herdr pane run "$cur_pane" "$cmd" >/dev/null; fi
-    done 3<<< "$layout"
+    done 3<<< "$plan"
 
     return 0
 }

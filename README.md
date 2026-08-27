@@ -118,20 +118,37 @@ each, `ctrl-x` close the spaces, `ctrl-w` new worktree, `ctrl-d` remove a worktr
 last two act on a single project, so mark exactly one for those.
 
 Projects are discovered through `~/.config/hx/roots` (one path or glob per line, seeded on first
-run) plus any git repo that zoxide knows about. A project can define its own tabs and panes in a
-`.hx` file at its root:
+run) plus any git repo that zoxide knows about.
 
-```
-edit: nvim .
-  shell 15%:
-server: pnpm dev
-  logs 30%: tail -f log
-console:
+A project can override the default layout with a `.hx` file at its root, in TOML — one `[[tab]]` per
+tab, and a `[[tab.pane]]` for each extra pane split off the one before it in that tab:
+
+```toml
+[[tab]]
+name = "edit"
+command = "nvim ."
+  [[tab.pane]]
+  name = "shell"
+  size = 15               # percent of the space the new pane takes
+  split = "down"          # "down" (default) or "right"
+
+[[tab]]
+name = "server"
+command = "pnpm dev"
+  [[tab.pane]]
+  name = "logs"
+  command = "tail -f log"
+  size = 30
+
+[[tab]]
+name = "console"
 ```
 
-Each unindented line is a tab; an indented line splits below the previous pane, taking the given
-share of the height. Commands are sent to the pane's shell verbatim. Without a `.hx` file every
-space gets the `edit` + `console` pair described above.
+Every key is optional: a tab with no command is a plain shell, a pane with no size splits in half.
+Commands are sent to the pane's shell verbatim. Reading `.hx` needs `python3` (for its stdlib
+`tomllib`); a project without one uses the built-in default and needs nothing. The layout is read
+once, when the space is created, so an edited `.hx` takes effect after closing and reopening the
+space.
 
 ## Secrets (macOS Keychain via keytar)
 
