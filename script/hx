@@ -22,16 +22,22 @@ usage() {
 hx - herdr workspace selector
 
 Usage:
-  hx [query]              pick a project and open or focus it
-  hx -                    jump back to the previous workspace
-  hx -a KIND [query]      open the project and start an agent (claude, codex, ...)
+  hx [query]              pick projects and open one space per project
+  hx -                    jump back to the previous space
+  hx -a KIND [query]      also start an agent (claude, codex, ...) in each
   hx -w BRANCH [query]    open a git worktree of the project on BRANCH
   hx -h                   this help
 
+Search for projects and mark as many as you want with tab. Each marked project
+becomes its own herdr space; hx then focuses the first one and attaches, and
+you switch between the spaces inside herdr.
+
 Picker keys:
-  enter    open / focus              ctrl-x   close the workspace
-  ctrl-w   new git worktree          ctrl-d   remove a worktree checkout
-  ctrl-a   start an agent in it
+  tab      mark / unmark a project    ctrl-x   close the space
+  enter    open the marked projects   ctrl-d   remove a worktree checkout
+  ctrl-a   start an agent in each     ctrl-w   new git worktree
+
+ctrl-w and ctrl-d act on a single project, so mark exactly one for those.
 
 Projects are listed with their agent state, most urgent first:
   blocked (waiting on you) > done (finished, unseen) > working > idle > closed
@@ -233,20 +239,26 @@ open_or_focus() {
     id="$(herdr_json workspace list | jq -r --arg cwd "$dir" --arg label "$name" "$JQ_LIB"'
         workspaces | map(select(wcwd == $cwd or wlabel == $label)) | first | .workspace_id // empty')"
 
+    WS_TAB=""
     if [[ -z $id ]]; then
-        echo "Create workspace $name"
-        created="$(herdr workspace create --cwd "$dir" --label "$name" --focus)"
+        echo "Create space $name"
+        created="$(herdr workspace create --cwd "$dir" --label "$name" --no-focus)"
         id="$(echo "$created" | jq -r '.result.workspace.workspace_id')"
         tab="$(echo "$created" | jq -r '.result.tab.tab_id')"
         pane="$(echo "$created" | jq -r '.result.root_pane.pane_id')"
         apply_layout "$dir" "$id" "$tab" "$pane"
-        herdr tab focus "${LAYOUT_FIRST_TAB:-$tab}" >/dev/null
-    else
-        herdr workspace focus "$id" >/dev/null
+        WS_TAB="${LAYOUT_FIRST_TAB:-$tab}"
     fi
 
+    # Focusing is the caller's job: opening several spaces at once should not
+    # make the focus jump through every one of them on the way.
     WS_ID="$id"
     history_push "$dir"
+}
+
+focus_space() {  # ws_id [tab_id]
+    herdr workspace focus "$1" >/dev/null
+    if [[ -n ${2:-} ]]; then herdr tab focus "$2" >/dev/null; fi
 }
 
 # Reads the project's .hx (or the built-in default) and builds the topology.
@@ -321,7 +333,7 @@ agent_name_for() {
 start_agent() {  # ws_id cwd kind
     local ws="$1" dir="$2" kind="$3" resp pane name
     # A fresh tab guarantees the clean, idle shell that `agent start` requires.
-    resp="$(herdr tab create --workspace "$ws" --cwd "$dir" --label "$kind" --focus)"
+    resp="$(herdr tab create --workspace "$ws" --cwd "$dir" --label "$kind" --no-focus)"
     pane="$(echo "$resp" | jq -r '.result.root_pane.pane_id')"
     name="$(agent_name_for "$(basename "$dir")" "$kind")"
     echo "Starting $kind as '$name'"
@@ -342,7 +354,7 @@ remove_worktree() {  # ws_id
     local ws="$1" yn
     [[ -n $ws && $ws != "-" ]] || die "that project is not open, nothing to remove"
     if herdr worktree remove --workspace "$ws" >/dev/null 2>&1; then return 0; fi
-    read -r -p "git refused (dirty checkout?) - remove anyway? [y/N] " yn
+    read -r -p "git refused (dirty checkout?) - remove anyway? [y/N] " yn || true
     case "$yn" in
         [yY]*) herdr worktree remove --workspace "$ws" --force >/dev/null ;;
         *)     echo "left alone" ;;
@@ -404,7 +416,9 @@ attach_if_outside() {
 
 main() {
     local agent_kind="" worktree_branch="" query="" jump_back=0
-    local dir="" state="-" ws="-" pane="-" agent="-" key="" out="" row=""
+    local dir="" ws="-" key="" out="" rows="" line=""
+    local first_ws="" first_tab="" first_dir=""
+    SEL_DIRS=(); SEL_WS=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -426,50 +440,79 @@ main() {
     if [[ $jump_back == 1 ]]; then
         dir="$(previous_dir || true)"
         [[ -n $dir ]] || die "no previous workspace"
+        SEL_DIRS=("$dir"); SEL_WS=("-")
     else
-        out="$(build_rows | fzf --ansi --delimiter=$'\t' --with-nth=7 \
+        # --multi: tab marks a project, so one pass through the picker can open
+        # several spaces at once. With --expect the key comes back on line 1 and
+        # every marked row after it.
+        out="$(build_rows | fzf --ansi --multi --delimiter=$'\t' --with-nth=7 \
                 --query="$query" \
                 --expect=ctrl-w,ctrl-a,ctrl-x,ctrl-d \
-                --header='enter open   ctrl-w worktree   ctrl-a agent   ctrl-x close   ctrl-d rm worktree' \
+                --header='tab mark   enter open   ctrl-a agent   ctrl-w worktree   ctrl-x close   ctrl-d rm worktree' \
                 --preview="$SELF --preview {2} {3} {4} {6}" \
                 --preview-window='right:55%')" || out=""
         [[ -n $out ]] || return 0
-        key="$(printf '%s' "$out" | head -1)"
-        row="$(printf '%s' "$out" | sed -n '2p')"
-        [[ -n $row ]] || return 0
-        IFS=$'\t' read -r _ state ws pane agent dir _ <<< "$row"
+        key="$(printf '%s\n' "$out" | head -1)"
+        rows="$(printf '%s\n' "$out" | tail -n +2)"
+        [[ -n $rows ]] || return 0
+        while IFS= read -r line; do
+            [[ -n $line ]] || continue
+            IFS=$'\t' read -r _ _ ws _ _ dir _ <<< "$line"
+            SEL_DIRS+=("$dir"); SEL_WS+=("$ws")
+        done <<< "$rows"
+        [[ ${#SEL_DIRS[@]} -gt 0 ]] || return 0
+        dir="${SEL_DIRS[0]}"; ws="${SEL_WS[0]}"
     fi
+
+    local i n="${#SEL_DIRS[@]}"
 
     case "$key" in
         ctrl-x)
-            [[ $ws != "-" ]] || die "that project is not open"
-            herdr workspace close "$ws" >/dev/null
-            echo "Closed $dir"
+            for ((i = 0; i < n; i++)); do
+                if [[ ${SEL_WS[$i]} == "-" ]]; then
+                    echo "hx: ${SEL_DIRS[$i]} is not open, skipped" >&2
+                else
+                    herdr workspace close "${SEL_WS[$i]}" >/dev/null
+                    echo "Closed ${SEL_DIRS[$i]}"
+                fi
+            done
             return 0 ;;
         ctrl-d)
+            # Deleting a checkout is destructive; never do it to a whole batch.
+            [[ $n == 1 ]] || die "ctrl-d removes a worktree checkout, mark exactly one project"
             remove_worktree "$ws"
             return 0 ;;
         ctrl-w)
-            if [[ -z $worktree_branch ]]; then read -r -p "branch: " worktree_branch; fi
+            # One branch name cannot sensibly cover several repos.
+            [[ $n == 1 ]] || die "ctrl-w takes one branch, mark exactly one project"
+            if [[ -z $worktree_branch ]]; then read -r -p "branch: " worktree_branch || true; fi
             [[ -n $worktree_branch ]] || die "no branch given"
             make_worktree "$ws" "$dir" "$worktree_branch"
             attach_if_outside
             return 0 ;;
         ctrl-a)
-            if [[ -z $agent_kind ]]; then read -r -p "agent kind [claude]: " agent_kind; fi
+            if [[ -z $agent_kind ]]; then read -r -p "agent kind [claude]: " agent_kind || true; fi
             agent_kind="${agent_kind:-claude}" ;;
     esac
 
     if [[ -n $worktree_branch ]]; then
+        [[ $n == 1 ]] || die "-w takes one branch, mark exactly one project"
         open_or_focus "$dir"
         make_worktree "$WS_ID" "$dir" "$worktree_branch"
         attach_if_outside
         return 0
     fi
 
-    open_or_focus "$dir"
+    # Open every marked project as its own space, then focus the first one and
+    # attach once - herdr keeps them all alive, switching between them is manual.
+    for ((i = 0; i < n; i++)); do
+        open_or_focus "${SEL_DIRS[$i]}"
+        if [[ -n $agent_kind ]]; then start_agent "$WS_ID" "${SEL_DIRS[$i]}" "$agent_kind"; fi
+        if [[ $i == 0 ]]; then first_ws="$WS_ID"; first_tab="$WS_TAB"; first_dir="${SEL_DIRS[$i]}"; fi
+    done
 
-    if [[ -n $agent_kind ]]; then start_agent "$WS_ID" "$dir" "$agent_kind"; fi
+    focus_space "$first_ws" "$first_tab"
+    history_push "$first_dir"          # the space we land in belongs on top
 
     attach_if_outside
 }

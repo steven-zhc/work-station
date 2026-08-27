@@ -93,20 +93,29 @@ The `tx` script provides intelligent workspace switching with tmux sessions for 
 ### hx
 
 `hx` is the [herdr](https://herdr.dev) counterpart of `tx` (requires `herdr`, `fzf`, `jq`; uses
-`zoxide` when present). Each project becomes a herdr workspace, and because herdr tracks the state
-of the coding agent inside every pane, the picker doubles as a "what needs me" list: projects are
-labelled `blocked` / `done` / `working` / `idle` and sorted with the most urgent first. The preview
-pane shows the live screen of a running agent, or git status and log for a project that is not open.
+`zoxide` when present). Unlike a tmux session, herdr keeps every space alive at once, so `hx` is
+less a switcher than a launcher: **search projects, mark as many as you want with `tab`, and each
+one is opened as its own space.** `hx` then focuses the first and attaches, and you switch between
+the spaces inside herdr.
+
+Each space gets two tabs: `edit` (the editor on top, a shell below it) and `console` (a plain
+shell), both in the project directory.
+
+Because herdr tracks the state of the coding agent in every pane, the picker doubles as a "what
+needs me" list: projects are labelled `blocked` / `done` / `working` / `idle` and sorted with the
+most urgent first. The preview pane shows the live screen of a running agent, or git status and log
+for a project that is not open.
 
 ```bash
-hx [query]           # pick a project and open or focus it
-hx -                 # jump back to the previous workspace
-hx -a claude         # open it and start an agent in a fresh tab
-hx -w feat/login     # open a git worktree of it on that branch
+hx [query]           # mark projects, open one space each
+hx -                 # jump back to the previous space
+hx -a claude         # also start an agent in each of them
+hx -w feat/login     # open a git worktree of the project on that branch
 ```
 
-Inside the picker: `enter` open/focus, `ctrl-w` new worktree, `ctrl-a` start an agent,
-`ctrl-x` close the workspace, `ctrl-d` remove a worktree checkout.
+Inside the picker: `tab` mark/unmark, `enter` open the marked projects, `ctrl-a` start an agent in
+each, `ctrl-x` close the spaces, `ctrl-w` new worktree, `ctrl-d` remove a worktree checkout. The
+last two act on a single project, so mark exactly one for those.
 
 Projects are discovered through `~/.config/hx/roots` (one path or glob per line, seeded on first
 run) plus any git repo that zoxide knows about. A project can define its own tabs and panes in a
@@ -121,8 +130,8 @@ console:
 ```
 
 Each unindented line is a tab; an indented line splits below the previous pane, taking the given
-share of the height. Commands are sent to the pane's shell verbatim. Without a `.hx` file the
-layout is the `edit` + `console` pair that `tx` produced.
+share of the height. Commands are sent to the pane's shell verbatim. Without a `.hx` file every
+space gets the `edit` + `console` pair described above.
 
 ## Secrets (macOS Keychain via keytar)
 
