@@ -83,9 +83,9 @@ Space layout:
 Space sets:
   A set is a group of spaces to bring up in one step, declared in TOML.
   `hx -s work` opens all of them; `hx -s` with no name opens the first set in
-  the file. hx reads .hx-spaces.toml in the current directory when there is
-  one - a checkout describing its own spaces - and ~/.config/hx/spaces.toml
-  otherwise.
+  the file. hx uses the nearest .hx-spaces.toml at or above the current
+  directory when there is one - a checkout describing its own spaces - and
+  ~/.config/hx/spaces.toml otherwise.
 
     [[set]]
     name = "work"
@@ -118,8 +118,8 @@ Space sets:
 Config:
   ~/.config/hx/roots        where to look for projects, one path or glob per line
   ~/.config/hx/spaces.toml  named sets of spaces for hx -s
-  ./.hx-spaces.toml         the same, for the current directory, and preferred
-                            over the global file when it exists
+  ./.hx-spaces.toml         the same, searched for from the current directory
+                            upwards, and preferred over the global file
   <project>/.hx             that project's layout, taking precedence over the
                             default above
 
@@ -207,6 +207,19 @@ PY
 # Reads ~/.config/hx/spaces.toml and prints the spaces of one named set, as
 #   dir<US>name<US>agent
 # per line. Without a name the first set in the file wins.
+# The nearest .hx-spaces.toml at or above the current directory, if any.
+find_local_spaces() {
+    local dir="$PWD"
+    while :; do
+        if [[ -f "$dir/$LOCAL_SPACES_FILE" ]]; then
+            printf '%s\n' "$dir/$LOCAL_SPACES_FILE"
+            return 0
+        fi
+        [[ $dir == "/" ]] && return 1
+        dir="$(dirname "$dir")"
+    done
+}
+
 spaces_from_toml() {
     python3 - "$1" "$2" <<'PY'
 import os, sys, tomllib
@@ -638,10 +651,10 @@ main() {
         SEL_DIRS=("$dir"); SEL_WS=("-"); SEL_NAMES=(""); SEL_AGENTS=("")
     elif [[ $use_set == 1 ]]; then
         # One step: no picker, just open every space the named set declares.
-        # A .hx-spaces.toml in the current directory describes that checkout's
-        # own spaces and wins over the global file.
-        spaces_file="$SPACES_FILE"
-        if [[ -f "$PWD/$LOCAL_SPACES_FILE" ]]; then spaces_file="$PWD/$LOCAL_SPACES_FILE"; fi
+        # A .hx-spaces.toml at or above the current directory describes that
+        # checkout's own spaces and wins over the global file.
+        spaces_file="$(find_local_spaces || true)"
+        [[ -n $spaces_file ]] || spaces_file="$SPACES_FILE"
         [[ -f $spaces_file ]] \
             || die "no $LOCAL_SPACES_FILE here and no $SPACES_FILE - see hx -h for the format"
         require_bins python3

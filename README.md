@@ -115,8 +115,8 @@ hx -w feat/login     # open a git worktree of the project on that branch
 ```
 
 For the spaces you always want up, declare a set and bring the whole thing up in one step with
-`hx -s <name>` (or `hx -s` for the first set in the file). Sets live in `.hx-spaces.toml` in the
-current directory when there is one — a checkout describing its own spaces — and in
+`hx -s <name>` (or `hx -s` for the first set in the file). hx uses the nearest `.hx-spaces.toml` at
+or above the current directory when there is one — a checkout describing its own spaces — and
 `~/.config/hx/spaces.toml` otherwise:
 
 ```toml
