@@ -108,10 +108,33 @@ for a project that is not open.
 
 ```bash
 hx [query]           # mark projects, open one space each
+hx -s work           # open every space the "work" set declares, no picker
 hx -                 # jump back to the previous space
 hx -a claude         # also start an agent in each of them
 hx -w feat/login     # open a git worktree of the project on that branch
 ```
+
+For the spaces you always want up, declare a set in `~/.config/hx/spaces.toml` and bring the whole
+thing up in one step with `hx -s <name>` (or `hx -s` for the first set in the file):
+
+```toml
+[[set]]
+name = "work"
+  [[set.space]]
+  dir = "~/Workspace/api"
+  agent = "claude"        # optional: start this agent in the space
+  [[set.space]]
+  dir = "~/Workspace/web"
+  name = "web-ui"         # optional: label the space something else
+
+[[set]]
+name = "personal"
+  [[set.space]]
+  dir = "~/.dotfile"
+```
+
+Only `dir` is required. Each space is still laid out by its own `.hx` or the default, an
+already-open one is left alone, and a directory that no longer exists is skipped with a warning.
 
 Inside the picker: `tab` mark/unmark, `enter` open the marked projects, `ctrl-a` start an agent in
 each, `ctrl-x` close the spaces, `ctrl-w` new worktree, `ctrl-d` remove a worktree checkout. The

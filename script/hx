@@ -12,6 +12,7 @@ set -euo pipefail
 HX_CONFIG_DIR="${HX_CONFIG_DIR:-$HOME/.config/hx}"
 HX_CACHE_DIR="${HX_CACHE_DIR:-$HOME/.cache/hx}"
 ROOTS_FILE="$HX_CONFIG_DIR/roots"
+SPACES_FILE="$HX_CONFIG_DIR/spaces.toml"
 HISTORY_FILE="$HX_CACHE_DIR/history"
 HISTORY_MAX=20
 
@@ -23,6 +24,7 @@ hx - herdr workspace selector
 
 Usage:
   hx [query]              pick projects and open one space per project
+  hx -s [SET]             open every space a declared set names, no picker
   hx -                    jump back to the previous space
   hx -a KIND [query]      also start an agent (claude, codex, ...) in each
   hx -w BRANCH [query]    open a git worktree of the project on BRANCH
@@ -77,8 +79,32 @@ Space layout:
   of an "edit" tab running $EDITOR with a 15% shell below it, plus a "console"
   tab holding a plain shell. Both start in the project directory.
 
+Space sets:
+  A set is a group of spaces to bring up in one step, declared in TOML in
+  ~/.config/hx/spaces.toml. `hx -s work` opens all of them; `hx -s` with no
+  name opens the first set in the file.
+
+    [[set]]
+    name = "work"
+      [[set.space]]
+      dir = "~/Workspace/api"
+      agent = "claude"        # optional: start this agent in the space
+      [[set.space]]
+      dir = "~/Workspace/web"
+      name = "web-ui"         # optional: label the space something else
+
+    [[set]]
+    name = "personal"
+      [[set.space]]
+      dir = "~/.dotfile"
+
+  Only dir is required. Each space is still laid out by its own .hx or the
+  default, an already-open one is left alone, and a directory that no longer
+  exists is skipped with a warning. -a overrides the per-space agent.
+
 Config:
   ~/.config/hx/roots      where to look for projects, one path or glob per line
+  ~/.config/hx/spaces.toml  named sets of spaces for hx -s
   <project>/.hx           that project's layout, taking precedence over the
                           default above
 
@@ -158,6 +184,56 @@ for ti, tab in enumerate(tabs):
             sys.exit(f"hx: {path}: {pwhere}.size must be an integer between 1 and 99")
         lines.append(SEP.join(
             ["pane", text(pane, "name", pwhere), text(pane, "command", pwhere), split, str(size)]))
+
+print("\n".join(lines))
+PY
+}
+
+# Reads ~/.config/hx/spaces.toml and prints the spaces of one named set, as
+#   dir<US>name<US>agent
+# per line. Without a name the first set in the file wins.
+spaces_from_toml() {
+    python3 - "$1" "$2" <<'PY'
+import os, sys, tomllib
+
+SEP = "\x1f"
+path, want = sys.argv[1], sys.argv[2]
+try:
+    with open(path, "rb") as fh:
+        doc = tomllib.load(fh)
+except (OSError, tomllib.TOMLDecodeError) as exc:
+    sys.exit(f"hx: {path}: {exc}")
+
+sets = doc.get("set", [])
+if not isinstance(sets, list) or not sets:
+    sys.exit(f"hx: {path}: needs at least one [[set]]")
+
+known = [s.get("name", "") for s in sets if isinstance(s, dict)]
+if want:
+    chosen = next((s for s in sets if isinstance(s, dict) and s.get("name") == want), None)
+    if chosen is None:
+        sys.exit(f"hx: {path}: no set named {want!r} (known: {', '.join(map(str, known))})")
+else:
+    chosen = sets[0]
+
+spaces = chosen.get("space", [])
+if not isinstance(spaces, list) or not spaces:
+    sys.exit(f"hx: {path}: set {chosen.get('name', '')!r} has no [[set.space]]")
+
+lines = []
+for si, space in enumerate(spaces):
+    where = f"set {chosen.get('name', '')!r} space[{si}]"
+    if not isinstance(space, dict):
+        sys.exit(f"hx: {path}: {where} must be a table")
+    directory = space.get("dir")
+    if not isinstance(directory, str) or not directory:
+        sys.exit(f"hx: {path}: {where} needs a dir")
+    fields = [os.path.expanduser(directory).rstrip("/"),
+              str(space.get("name", "") or ""),
+              str(space.get("agent", "") or "")]
+    if any(c in f for f in fields for c in "\t\n\x1f"):
+        sys.exit(f"hx: {path}: {where} must not contain tabs or newlines")
+    lines.append(SEP.join(fields))
 
 print("\n".join(lines))
 PY
@@ -325,8 +401,8 @@ build_rows() {
 
 # Sets WS_ID. Creates the workspace and applies its layout when it is not open.
 open_or_focus() {
-    local dir="$1" name id created tab pane plan
-    name="$(basename "$dir" | tr . '_')"
+    local dir="$1" name="${2:-}" id created tab pane plan
+    [[ -n $name ]] || name="$(basename "$dir" | tr . '_')"
 
     id="$(herdr_json workspace list | jq -r --arg cwd "$dir" --arg label "$name" "$JQ_LIB"'
         workspaces | map(select(wcwd == $cwd or wlabel == $label)) | first | .workspace_id // empty')"
@@ -510,16 +586,19 @@ attach_if_outside() {
 }
 
 main() {
-    local agent_kind="" worktree_branch="" query="" jump_back=0
-    local dir="" ws="-" key="" out="" rows="" line=""
+    local agent_kind="" worktree_branch="" query="" jump_back=0 use_set=0 set_name=""
+    local dir="" ws="-" key="" out="" rows="" line="" entries="" kind=""
     local first_ws="" first_tab="" first_dir=""
-    SEL_DIRS=(); SEL_WS=()
+    SEL_DIRS=(); SEL_WS=(); SEL_NAMES=(); SEL_AGENTS=()
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --preview)     shift; cmd_preview "$@"; return 0 ;;
             -h|--help)     usage; return 0 ;;
             -)             jump_back=1; shift ;;
+            -s|--set)      use_set=1
+                           if [[ -n ${2:-} && ${2:-} != -* ]]; then set_name="$2"; shift; fi
+                           shift ;;
             -a|--agent)    agent_kind="${2:-}";     [[ -n $agent_kind ]]      || die "-a needs an agent kind"; shift 2 ;;
             -w|--worktree) worktree_branch="${2:-}"; [[ -n $worktree_branch ]] || die "-w needs a branch";     shift 2 ;;
             -*)            die "unknown option $1" ;;
@@ -535,7 +614,19 @@ main() {
     if [[ $jump_back == 1 ]]; then
         dir="$(previous_dir || true)"
         [[ -n $dir ]] || die "no previous workspace"
-        SEL_DIRS=("$dir"); SEL_WS=("-")
+        SEL_DIRS=("$dir"); SEL_WS=("-"); SEL_NAMES=(""); SEL_AGENTS=("")
+    elif [[ $use_set == 1 ]]; then
+        # One step: no picker, just open every space the named set declares.
+        [[ -f $SPACES_FILE ]] || die "no $SPACES_FILE yet - see hx -h for its format"
+        require_bins python3
+        entries="$(spaces_from_toml "$SPACES_FILE" "$set_name")" || exit 1
+        while IFS="$PLAN_SEP" read -r dir name agent; do
+            [[ -n $dir ]] || continue
+            if [[ ! -d $dir ]]; then echo "hx: $dir does not exist, skipped" >&2; continue; fi
+            SEL_DIRS+=("$dir"); SEL_WS+=("-"); SEL_NAMES+=("$name"); SEL_AGENTS+=("$agent")
+        done <<< "$entries"
+        [[ ${#SEL_DIRS[@]} -gt 0 ]] || die "that set has no usable directories"
+        dir="${SEL_DIRS[0]}"
     else
         # --multi: tab marks a project, so one pass through the picker can open
         # several spaces at once. With --expect the key comes back on line 1 and
@@ -553,7 +644,7 @@ main() {
         while IFS= read -r line; do
             [[ -n $line ]] || continue
             IFS=$'\t' read -r _ _ ws _ _ dir _ <<< "$line"
-            SEL_DIRS+=("$dir"); SEL_WS+=("$ws")
+            SEL_DIRS+=("$dir"); SEL_WS+=("$ws"); SEL_NAMES+=(""); SEL_AGENTS+=("")
         done <<< "$rows"
         [[ ${#SEL_DIRS[@]} -gt 0 ]] || return 0
         dir="${SEL_DIRS[0]}"; ws="${SEL_WS[0]}"
@@ -601,8 +692,10 @@ main() {
     # Open every marked project as its own space, then focus the first one and
     # attach once - herdr keeps them all alive, switching between them is manual.
     for ((i = 0; i < n; i++)); do
-        open_or_focus "${SEL_DIRS[$i]}"
-        if [[ -n $agent_kind ]]; then start_agent "$WS_ID" "${SEL_DIRS[$i]}" "$agent_kind"; fi
+        open_or_focus "${SEL_DIRS[$i]}" "${SEL_NAMES[$i]}"
+        # -a applies to everything; a set can also name an agent per space.
+        kind="${agent_kind:-${SEL_AGENTS[$i]}}"
+        if [[ -n $kind ]]; then start_agent "$WS_ID" "${SEL_DIRS[$i]}" "$kind"; fi
         if [[ $i == 0 ]]; then first_ws="$WS_ID"; first_tab="$WS_TAB"; first_dir="${SEL_DIRS[$i]}"; fi
     done
 
