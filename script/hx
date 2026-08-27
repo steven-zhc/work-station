@@ -13,7 +13,8 @@ HX_CONFIG_DIR="${HX_CONFIG_DIR:-$HOME/.config/hx}"
 HX_CACHE_DIR="${HX_CACHE_DIR:-$HOME/.cache/hx}"
 ROOTS_FILE="$HX_CONFIG_DIR/roots"
 SPACES_FILE="$HX_CONFIG_DIR/spaces.toml"
-LOCAL_SPACES_FILE=".hx-spaces.toml"
+LOCAL_SPACES_FILE=".hx-space.toml"
+LAYOUT_FILE=".hx.toml"
 HISTORY_FILE="$HX_CACHE_DIR/history"
 HISTORY_MAX=20
 
@@ -46,11 +47,11 @@ Projects are listed with their agent state, most urgent first:
   blocked (waiting on you) > done (finished, unseen) > working > idle > closed
 
 Space layout:
-  A space is laid out from the project's own .hx file when it has one, and from
+  A space is laid out from the project's own .hx.toml file when it has one, and from
   the default layout otherwise. Either way it is read once, when the space is
-  created - edit .hx and the space has to be closed and reopened to pick it up.
+  created - edit .hx.toml and the space has to be closed and reopened to pick it up.
 
-  .hx is TOML (needs python3, whose tomllib reads it). One [[tab]] per tab, and
+  .hx.toml is TOML (needs python3, whose tomllib reads it). One [[tab]] per tab, and
   a [[tab.pane]] for each extra pane split off the one before it in that tab:
 
     [[tab]]
@@ -76,14 +77,14 @@ Space layout:
   size splits in half. Commands are sent to the pane's shell verbatim, so write
   them for your shell. Panes stack: the second one splits off the first.
 
-  The default layout, used when the project has no .hx file, is the equivalent
+  The default layout, used when the project has no .hx.toml file, is the equivalent
   of an "edit" tab running $EDITOR with a 15% shell below it, plus a "console"
   tab holding a plain shell. Both start in the project directory.
 
 Space sets:
   A set is a group of spaces to bring up in one step, declared in TOML.
   `hx -s work` opens all of them; `hx -s` with no name opens the first set in
-  the file. hx uses the nearest .hx-spaces.toml at or above the current
+  the file. hx uses the nearest .hx-space.toml at or above the current
   directory when there is one - a checkout describing its own spaces - and
   ~/.config/hx/spaces.toml otherwise.
 
@@ -102,7 +103,7 @@ Space sets:
       dir = "~/.dotfile"
 
   Only dir is required, and a relative one is resolved against the file that
-  declares it, so a local .hx-spaces.toml can just name its neighbours:
+  declares it, so a local .hx-space.toml can just name its neighbours:
 
     [[set]]
     name = "all"
@@ -111,16 +112,16 @@ Space sets:
       [[set.space]]
       dir = "packages/web"
 
-  Each space is still laid out by its own .hx or the default, an already-open
+  Each space is still laid out by its own .hx.toml or the default, an already-open
   one is left alone, and a directory that no longer exists is skipped with a
   warning. -a overrides the per-space agent.
 
 Config:
   ~/.config/hx/roots        where to look for projects, one path or glob per line
   ~/.config/hx/spaces.toml  named sets of spaces for hx -s
-  ./.hx-spaces.toml         the same, searched for from the current directory
+  ./.hx-space.toml          the same, searched for from the current directory
                             upwards, and preferred over the global file
-  <project>/.hx             that project's layout, taking precedence over the
+  <project>/.hx.toml        that project's layout, taking precedence over the
                             default above
 
 Env:
@@ -142,14 +143,14 @@ PLAN_SEP=$'\x1f'
 
 plan_line() { local IFS="$PLAN_SEP"; printf '%s\n' "$*"; }
 
-# Written directly, so a project without a .hx file never needs the TOML reader.
+# Written directly, so a project without a .hx.toml file never needs the TOML reader.
 default_plan() {
     plan_line tab  edit    "${EDITOR:-vi} ."
     plan_line pane shell   "" down 15
     plan_line tab  console ""
 }
 
-# Reads a project's .hx (TOML) and prints the same plan. tomllib is stdlib from
+# Reads a project's .hx.toml (TOML) and prints the same plan. tomllib is stdlib from
 # Python 3.11, so this needs no package beyond python3 itself.
 plan_from_toml() {
     python3 - "$1" <<'PY'
@@ -207,7 +208,7 @@ PY
 # Reads ~/.config/hx/spaces.toml and prints the spaces of one named set, as
 #   dir<US>name<US>agent
 # per line. Without a name the first set in the file wins.
-# The nearest .hx-spaces.toml at or above the current directory, if any.
+# The nearest .hx-space.toml at or above the current directory, if any.
 find_local_spaces() {
     local dir="$PWD"
     while :; do
@@ -227,7 +228,7 @@ import os, sys, tomllib
 SEP = "\x1f"
 path, want = sys.argv[1], sys.argv[2]
 # Relative dirs are resolved against the file that declares them, so a local
-# .hx-spaces.toml can name its neighbours without spelling out full paths.
+# .hx-space.toml can name its neighbours without spelling out full paths.
 base = os.path.dirname(os.path.abspath(path))
 try:
     with open(path, "rb") as fh:
@@ -443,7 +444,7 @@ open_or_focus() {
 
     WS_TAB=""
     if [[ -z $id ]]; then
-        # Resolve the layout before creating anything: a broken .hx should stop
+        # Resolve the layout before creating anything: a broken .hx.toml should stop
         # here rather than leave an empty space behind.
         plan="$(layout_plan "$dir")" || exit 1
 
@@ -467,15 +468,15 @@ focus_space() {  # ws_id [tab_id]
     if [[ -n ${2:-} ]]; then herdr tab focus "$2" >/dev/null; fi
 }
 
-# layout_plan resolves a project's layout - its own .hx, or the default - into
-# the plan format described above, and fails without touching herdr if the .hx
+# layout_plan resolves a project's layout - its own .hx.toml, or the default - into
+# the plan format described above, and fails without touching herdr if the .hx.toml
 # is broken. apply_plan then builds it, setting LAYOUT_FIRST_TAB so the caller
 # can focus the tab the layout starts with.
 layout_plan() {
     local dir="$1"
-    if [[ -f "$dir/.hx" ]]; then
+    if [[ -f "$dir/$LAYOUT_FILE" ]]; then
         require_bins python3
-        plan_from_toml "$dir/.hx"
+        plan_from_toml "$dir/$LAYOUT_FILE"
     else
         default_plan
     fi
@@ -651,7 +652,7 @@ main() {
         SEL_DIRS=("$dir"); SEL_WS=("-"); SEL_NAMES=(""); SEL_AGENTS=("")
     elif [[ $use_set == 1 ]]; then
         # One step: no picker, just open every space the named set declares.
-        # A .hx-spaces.toml at or above the current directory describes that
+        # A .hx-space.toml at or above the current directory describes that
         # checkout's own spaces and wins over the global file.
         spaces_file="$(find_local_spaces || true)"
         [[ -n $spaces_file ]] || spaces_file="$SPACES_FILE"
