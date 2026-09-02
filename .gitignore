@@ -179,3 +179,9 @@ Temporary Items
 
 ### Node ###
 node_modules/
+
+### Project ###
+# 整个 .idea/ 不入库。
+# 上面 toptal 那段只逐条忽略了 .idea 里的一部分文件（workspace.xml、shelf 等），
+# modules.xml / vcs.xml / *.iml 那几条是注释掉的，所以 .idea/ 仍然会被跟踪。
+.idea/
