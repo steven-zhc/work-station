@@ -81,7 +81,7 @@ dynamic include.
 - **Workspace**: tmux and herdr with custom session management
 
 ### Runtimes & Package Managers
-- **Node.js**: Volta version manager, pnpm package manager
+- **Node.js**: mise version manager, pnpm package manager
 - **Python**: uv for environment management
 - **JavaScript**: Bun alternative runtime
 

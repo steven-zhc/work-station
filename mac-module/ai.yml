@@ -2,23 +2,31 @@
 # AI Development Tools
 
 - name: Install Claude Code globally with pnpm
-  shell: pnpm install -g @anthropic-ai/claude-code
+  # 用 mise 的 shim 调 pnpm；creates 指向 pnpm 全局 bin 目录里的可执行文件
+  shell: "{{ lookup('env','HOME') }}/.local/share/mise/shims/pnpm install -g @anthropic-ai/claude-code"
   args:
-    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/claude-code"
+    creates: "{{ lookup('env','HOME') }}/Library/pnpm/claude"
+  environment:
+    # 不设 PNPM_HOME 的话 pnpm install -g 会报 ERR_PNPM_NO_GLOBAL_BIN_DIR
+    PNPM_HOME: "{{ lookup('env','HOME') }}/Library/pnpm"
   tags:
     - ai-all
     - claude
 
 - name: Install Codex globally with pnpm
-  shell: pnpm install -g @openai/codex
+  shell: "{{ lookup('env','HOME') }}/.local/share/mise/shims/pnpm install -g @openai/codex"
   args:
-    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/codex"
+    creates: "{{ lookup('env','HOME') }}/Library/pnpm/codex"
+  environment:
+    # 不设 PNPM_HOME 的话 pnpm install -g 会报 ERR_PNPM_NO_GLOBAL_BIN_DIR
+    PNPM_HOME: "{{ lookup('env','HOME') }}/Library/pnpm"
   tags:
     - ai-all
     - codex
 
 - name: Install specify-cli via uv
-  shell: uv tool install specify-cli --from git+https://github.com/github/spec-kit.git
+  # 全路径调 uv：全新机器上 ~/.local/bin 还不在 ansible 进程的 PATH 里
+  shell: "{{ lookup('env','HOME') }}/.local/bin/uv tool install specify-cli --from git+https://github.com/github/spec-kit.git"
   args:
     creates: "{{ lookup('env','HOME') }}/.local/bin/specify"
   tags:

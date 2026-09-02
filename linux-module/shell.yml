@@ -35,7 +35,7 @@
   tags: [shell-all, fish]
 
 - name: 把 ~/.local/bin 加进 fish 的 PATH
-  # cli.yml 里的 bat/fd 链接和 uv/volta 装的东西都在这里
+  # cli.yml 里的 bat/fd 链接、mise 和 uv 都在这里
   ansible.builtin.lineinfile:
     path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
     line: "fish_add_path ~/.local/bin"

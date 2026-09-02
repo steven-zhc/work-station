@@ -1,40 +1,61 @@
 ---
 # Node.js / Bun (Debian/Ubuntu)
-# 对应 mac-module/js.yml。node_version 由 linux-local.yml 传入。
+# 对应 mac-module/js.yml。版本管理用 mise，不再用 volta。
+# node_version 由 linux-local.yml 传入。
 
-- name: Install Volta
-  # apt 源里没有 volta，用官方脚本装到 ~/.volta（不需要 root）
-  ansible.builtin.shell: curl -fsSL https://get.volta.sh | bash -s -- --skip-setup
+- name: Install mise
+  # apt 源里没有 mise，用官方脚本装到 ~/.local/bin（不需要 root）
+  ansible.builtin.shell: curl -fsSL https://mise.run | sh
   args:
-    creates: "{{ ansible_env.HOME }}/.volta/bin/volta"
-  tags: [js-all, volta]
+    creates: "{{ ansible_env.HOME }}/.local/bin/mise"
+  tags: [js-all, mise]
 
-- name: 把 volta 加进 fish 的 PATH
+- name: Ensure mise activation in fish config
+  # mise 靠 shim 目录接管 node/pnpm/npx，不激活的话新开的 shell 里
+  # 这些命令根本不存在
   ansible.builtin.lineinfile:
     path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
-    line: "set -gx VOLTA_HOME $HOME/.volta; fish_add_path $VOLTA_HOME/bin"
+    line: "{{ ansible_env.HOME }}/.local/bin/mise activate fish | source"
     create: true
     mode: "0644"
-  tags: [js-all, volta]
+  tags: [js-all, mise]
 
-- name: Install Node.js via Volta
-  ansible.builtin.shell: "{{ ansible_env.HOME }}/.volta/bin/volta install node@{{ node_version }}"
+- name: Install Node.js via mise
+  ansible.builtin.shell: "{{ ansible_env.HOME }}/.local/bin/mise use --global node@{{ node_version }}"
   args:
-    creates: "{{ ansible_env.HOME }}/.volta/tools/image/node/{{ node_version }}"
+    # mise 会为大版本建软链（installs/node/24 -> 24.20.0），路径稳定，不用 glob
+    creates: "{{ ansible_env.HOME }}/.local/share/mise/installs/node/{{ node_version }}"
   tags: [js-all, node]
 
-- name: Install pnpm via Volta
-  ansible.builtin.shell: "{{ ansible_env.HOME }}/.volta/bin/volta install pnpm"
+- name: Install pnpm via mise
+  ansible.builtin.shell: "{{ ansible_env.HOME }}/.local/bin/mise use --global pnpm@latest"
   args:
-    creates: "{{ ansible_env.HOME }}/.volta/bin/pnpm"
+    creates: "{{ ansible_env.HOME }}/.local/share/mise/installs/pnpm/latest"
   tags: [js-all, pnpm]
 
-- name: Run pnpm setup (global bin dir)
-  ansible.builtin.shell: "{{ ansible_env.HOME }}/.volta/bin/pnpm setup"
-  args:
-    creates: "{{ ansible_env.HOME }}/.local/share/pnpm"
-  environment:
-    PATH: "{{ ansible_env.HOME }}/.volta/bin:{{ ansible_env.PATH }}"
+# 不用 `pnpm setup`：它靠 $SHELL 猜要写哪个 rc 文件，而 ansible 的 shell 模块跑的是
+# /bin/sh，于是报 ERR_PNPM_NO_SHELL_CONFIG 直接失败（rc=1）。
+- name: Ensure pnpm global bin dir
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/share/pnpm"
+    state: directory
+    mode: "0755"
+  tags: [js-all, pnpm]
+
+- name: Ensure PNPM_HOME in fish config
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    line: "set -gx PNPM_HOME {{ ansible_env.HOME }}/.local/share/pnpm"
+    create: true
+    mode: "0644"
+  tags: [js-all, pnpm]
+
+- name: Add PNPM_HOME to fish PATH
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    line: "fish_add_path $PNPM_HOME"
+    create: true
+    mode: "0644"
   tags: [js-all, pnpm]
 
 - name: Install Bun

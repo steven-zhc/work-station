@@ -1,42 +1,71 @@
 ---
 # Node.js and JavaScript Runtime Setup
+# 版本管理用 mise（https://github.com/jdx/mise），不再用 volta。
 
-- name: Install Volta via Homebrew
+- name: Install mise via Homebrew
   homebrew:
-    name: volta
+    name: mise
     state: present
   tags:
-    - volta
+    - mise
     - js-all
 
-- name: Install Node.js via Volta
-  shell: volta install node@{{ node_version }}
-  args:
-    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/node/{{ node_version }}.*/"
+- name: Ensure mise activation in fish config
+  # mise 靠 shim 目录接管 node/pnpm/npx，不激活的话新开的 shell 里
+  # 这些命令根本不存在
+  ansible.builtin.lineinfile:
+    path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
+    line: "mise activate fish | source"
+    create: true
+    mode: '0644'
   tags:
-    - volta
+    - mise
     - js-all
 
-- name: Install pnpm via Volta
-  shell: volta install pnpm
+- name: Install Node.js via mise
+  shell: mise use --global node@{{ node_version }}
   args:
-    creates: "{{ lookup('env','HOME') }}/.volta/tools/image/packages/pnpm"
+    # mise 会为大版本建一个软链（installs/node/24 -> 24.20.0），
+    # 所以这个路径是稳定的，不需要 glob
+    creates: "{{ lookup('env','HOME') }}/.local/share/mise/installs/node/{{ node_version }}"
   tags:
-    - volta
+    - mise
+    - node
+    - js-all
+
+- name: Install pnpm via mise
+  shell: mise use --global pnpm@latest
+  args:
+    creates: "{{ lookup('env','HOME') }}/.local/share/mise/installs/pnpm/latest"
+  tags:
+    - mise
     - pnpm
     - js-all
 
-- name: Run pnpm setup (force global bin dir setup)
-  shell: pnpm setup
-  args:
-    creates: "{{ lookup('env','HOME') }}/.pnpm"
+# 不用 `pnpm setup`：它靠 $SHELL 猜要写哪个 rc 文件，而 ansible 的 shell 模块跑的是
+# /bin/sh，于是报 ERR_PNPM_NO_SHELL_CONFIG 直接失败（rc=1）。它无非做两件事——
+# 建全局 bin 目录、把它写进 shell 配置——这里自己做，顺带也更幂等。
+- name: Ensure pnpm global bin dir
+  file:
+    path: "{{ lookup('env','HOME') }}/Library/pnpm"
+    state: directory
+    mode: '0755'
   tags: [pnpm, pnpm_setup, js-all]
 
-- name: Ensure ~/.pnpm directory exists
-  file:
-     path: "{{ lookup('env','HOME') }}/.pnpm"
-     state: directory
-     mode: '0755'
+- name: Ensure PNPM_HOME in fish config
+  ansible.builtin.lineinfile:
+    path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
+    line: "set -gx PNPM_HOME {{ lookup('env','HOME') }}/Library/pnpm"
+    create: true
+    mode: '0644'
+  tags: [pnpm, pnpm_setup, js-all]
+
+- name: Add PNPM_HOME to fish PATH
+  ansible.builtin.lineinfile:
+    path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
+    line: "fish_add_path $PNPM_HOME"
+    create: true
+    mode: '0644'
   tags: [pnpm, pnpm_setup, js-all]
 
 - name: Tap oven-sh/bun repository

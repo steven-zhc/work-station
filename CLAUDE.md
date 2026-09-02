@@ -17,7 +17,7 @@ This is a macOS development environment setup and workspace management repositor
 brew install ansible
 
 # Run specific setup modules
-ansible-playbook mac-local.yml --tags volta        # Node.js/Volta setup
+ansible-playbook mac-local.yml --tags js,js-all   # Node.js via mise + pnpm + bun
 ansible-playbook mac-local.yml --tags ai           # AI tools (Claude Code)
 ansible-playbook mac-local.yml --tags apps         # GUI applications
 ansible-playbook mac-local.yml --tags shell --ask-become-pass  # Shell configuration
@@ -87,7 +87,7 @@ ansible-playbook fleet/harbor.yml --ask-become-pass   # same thing without the w
   - `module/` - Task files, same structure as `mac-module/`
 
 ### Key Technologies Configured
-- **Node.js Environment**: Volta for version management, pnpm for package management
+- **Node.js Environment**: mise for version management, pnpm for package management
 - **Shell**: Fish shell with Starship prompt
 - **Development Tools**: VS Code, iTerm2, tmux, lazygit, fzf, ripgrep, bat
 - **AI Tools**: Claude Code CLI installed globally
@@ -114,7 +114,7 @@ platform directory holds only what is specific to it:
 
 ### Tag-Based Installation
 The Ansible playbook uses tags for modular installation:
-- `volta` - Node.js runtime and package managers
+- `mise` - Node.js runtime and package managers (was `volta`)
 - `ai` - AI development tools
 - `apps` - GUI applications
 - `shell` - Shell configuration and prompt
