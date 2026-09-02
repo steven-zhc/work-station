@@ -4,11 +4,9 @@ manual_list=(
     "${HOME}/.dotfile"
 )
 
-image_folders=( $(find /scratch/helium/helium.js/images -maxdepth 1 -mindepth 1 -type d) )
-vm_works=( $(find /scratch/helium -maxdepth 1 -mindepth 1 -type d) )
 mac_works=( $(find ~/Workspace -maxdepth 2 -mindepth 1 -type d) )
 
-list=(${manual_list[@]} ${image_folders[@]} ${vm_works[@]} ${mac_works[@]})
+list=(${manual_list[@]} ${mac_works[@]})
 folders=()
 
 for f in "${list[@]}"
