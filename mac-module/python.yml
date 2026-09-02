@@ -10,11 +10,12 @@
   tags: [python-all, uv]
 
 - name: Verify uv command is available
-  command: uv --version
+  # 全路径：全新机器上 ~/.local/bin 还不在 ansible 进程的 PATH 里
+  command: "{{ lookup('env','HOME') }}/.local/bin/uv --version"
   register: uv_check
   ignore_errors: yes
   tags: [python-all, uv]
 
 - name: Install latest Python via uv
-  shell: uv python install
+  shell: "{{ lookup('env','HOME') }}/.local/bin/uv python install"
   tags: [python-all, python, python-install]
