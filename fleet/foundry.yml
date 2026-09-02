@@ -1,0 +1,18 @@
+---
+# foundry · MacBook Pro 15 (2018, Intel)
+#
+# 同 studio：日常开发工具链走 mac-local.yml，这里只加 fleet 需要的。
+# 额外多一个 AlDente —— 这台要长期插电运行，不管理充电上限电池会鼓包。
+#
+# 用法：./foundry.sh            或  ansible-playbook fleet/foundry.yml
+- name: Fleet · foundry 软件安装
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Import 三台共用的 macOS 工具
+      import_tasks: module/mac-common.yml
+      tags: [fleet-all, common]
+
+    - name: Import foundry 专属
+      import_tasks: module/mac-foundry.yml
+      tags: [fleet-all, foundry, aldente]

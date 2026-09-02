@@ -1,0 +1,13 @@
+---
+# harbor 上 fleet 专用的部分
+#
+# 通用开发环境（git/jq/ripgrep/tmux/fzf... 和 Docker）走仓库根的 linux-local.yml，
+# 这里不重复 —— 只装 fleet 这条链路额外需要的。
+
+- name: Install restic
+  ansible.builtin.apt:
+    name: restic
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  tags: [common-all, restic]

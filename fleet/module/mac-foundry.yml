@@ -1,0 +1,12 @@
+---
+# foundry 专属
+#
+# AlDente 把充电上限压到 80%。这台要长期插电跑任务，不管理充电的话电池鼓包
+# 是迟早的事。装完记得在它的界面里把上限拖到 80% 并勾开机启动 —— 那部分是
+# 图形界面里的设置，ansible 改不了。
+
+- name: Install aldente (电池充电上限)
+  homebrew_cask:
+    name: aldente
+    state: present
+  tags: [foundry-all, aldente]

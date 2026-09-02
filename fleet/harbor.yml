@@ -1,0 +1,45 @@
+---
+# harbor · ThinkPad T450 / Linux Mint 22.2
+#
+# 只装 fleet 这条链路额外需要的：Tailscale + restic。
+# 通用 Linux 开发环境（CLI、shell、Node、Python、Docker）走仓库根的
+# linux-local.yml，两边不重复。
+#
+# 用法：./harbor.sh                       或  ansible-playbook fleet/harbor.yml -K
+#       ./harbor.sh --tags tailscale      只装 Tailscale
+- name: Fleet · harbor 软件安装
+  hosts: localhost
+  connection: local
+  become: true
+  tasks:
+    - name: 探测 Ubuntu 代号
+      # Mint 22.2 的 VERSION_CODENAME 是 zara，Docker 和 Tailscale 的源里都没有这个
+      # 发行版。必须用 /etc/os-release 里的 UBUNTU_CODENAME（noble）。
+      # 同理也不能用 ansible_lsb.codename —— 那拿到的还是 Mint 自己的代号。
+      ansible.builtin.shell: . /etc/os-release && echo "$UBUNTU_CODENAME"
+      register: fleet_codename_out
+      changed_when: false
+      # --check 模式下 shell 任务默认跳过，那样 ubuntu_codename 会是空的、
+      # 后面的 assert 直接失败。这一步只读不写，让它在 check 模式也跑。
+      check_mode: false
+      tags: [always]
+
+    - name: 记下 Ubuntu 代号
+      ansible.builtin.set_fact:
+        ubuntu_codename: "{{ fleet_codename_out.stdout | trim }}"
+      tags: [always]
+
+    - name: 代号必须非空
+      ansible.builtin.assert:
+        that: ubuntu_codename | length > 0
+        fail_msg: "/etc/os-release 里没有 UBUNTU_CODENAME —— 这不是基于 Ubuntu 的发行版？"
+      tags: [always]
+
+    - name: Import fleet 专用包
+      import_tasks: module/linux-common.yml
+      tags: [fleet-all, common]
+
+    - name: Import Tailscale
+      import_tasks: module/linux-tailscale.yml
+      tags: [fleet-all, tailscale]
+

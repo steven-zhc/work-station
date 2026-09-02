@@ -1,0 +1,64 @@
+---
+# Intel Mac 开发环境（MacBook Pro 15 2018）
+#
+# 和 mac-local.yml 是兄弟关系：通用模块直接复用 mac-module/，
+# 只额外加 mac-module-intel/ 里那些在 Apple Silicon 上没有意义的东西。
+#
+# 用法：
+#   ansible-playbook mac-intel-local.yml
+#   ansible-playbook mac-intel-local.yml --tags intel-all   # 只跑 Intel 专属部分
+#   ansible-playbook mac-intel-local.yml --tags cli,cli-all
+#   ansible-playbook mac-intel-local.yml --list-tags
+- name: Setup Intel Mac Workspace
+  hosts: localhost
+  connection: local
+  vars:
+    node_version: "24"
+    fish_shell_path: "/usr/local/bin/fish"
+  tasks:
+    - name: 必须是 Intel Mac
+      # 在 Mac mini(M4) 上误跑这个 playbook 的话，bclm 这类东西装了也没用，
+      # brew 前缀断言还会失败。这里提前拦住，给一句能看懂的话。
+      ansible.builtin.assert:
+        that: ansible_architecture == "x86_64"
+        fail_msg: "这台是 {{ ansible_architecture }}，不是 Intel Mac。Apple Silicon 请用 mac-local.yml"
+      tags: [always]
+
+    # 用 import_tasks 而不是 include_tasks：import 是静态的，子任务在解析期就摊平，
+    # --tags fzf 这种细粒度标签才选得中。
+    - name: Import js, Node.js and Bun setup
+      import_tasks: mac-module/js.yml
+      tags: [js]
+
+    - name: Import shell configuration
+      import_tasks: mac-module/shell.yml
+      tags: [shell]
+
+    - name: Import fonts
+      import_tasks: mac-module/font.yml
+      tags: [font]
+
+    - name: Import CLI tools
+      import_tasks: mac-module/cli.yml
+      tags: [cli]
+
+    - name: Import Python tools
+      import_tasks: mac-module/python.yml
+      tags: [python]
+
+    - name: Import AI tools
+      import_tasks: mac-module/ai.yml
+      tags: [ai]
+
+    - name: Import Docker/Container tools
+      import_tasks: mac-module/docker.yml
+      tags: [docker]
+
+    # ---- Intel 专属 ----
+    - name: Import Homebrew 前缀差异
+      import_tasks: mac-module-intel/brew.yml
+      tags: [intel]
+
+    - name: Import 电源与散热
+      import_tasks: mac-module-intel/power.yml
+      tags: [intel]

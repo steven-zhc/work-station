@@ -39,6 +39,15 @@ brew install ansible
 ```
 
 ### Run Setup Modules
+
+One playbook per platform:
+
+| Playbook | Machine | Modules |
+| --- | --- | --- |
+| `mac-local.yml` | Apple Silicon Mac | `mac-module/` |
+| `mac-intel-local.yml` | Intel Mac | `mac-module/` + `mac-module-intel/` |
+| `linux-local.yml` | Debian/Ubuntu (Linux Mint 22.2) | `linux-module/` |
+
 ```bash
 ansible-playbook mac-local.yml --tags js,js-all            # Node.js
 ansible-playbook mac-local.yml --tags app                  # GUI applications
@@ -48,7 +57,20 @@ ansible-playbook mac-local.yml --tags cli,cli-all          # CLI utilities
 ansible-playbook mac-local.yml --tags python,python-all    # Python/uv
 ansible-playbook mac-local.yml --tags ai,ai-all            # AI tools (Claude Code)
 ansible-playbook mac-local.yml --tags docker,docker-all    # Container tools (Podman)
+
+# Intel Mac — same modules plus the Intel-only bits (/usr/local brew prefix, bclm, fan control)
+ansible-playbook mac-intel-local.yml
+ansible-playbook mac-intel-local.yml --tags intel-all      # only the Intel-specific parts
+
+# Linux (server subset: cli, shell, js, python, docker — no GUI apps, fonts, or Java)
+ansible-playbook linux-local.yml --ask-become-pass
+ansible-playbook linux-local.yml --tags docker -K
 ```
+
+`mac-intel-local.yml` and `linux-local.yml` use `import_tasks`, so single-tool tags work directly
+(`--tags fzf`). `mac-local.yml` still uses `include_tasks`, which is why its examples above pass
+both `cli` and `cli-all` — a tag that exists only on a child task cannot be selected through a
+dynamic include.
 
 ## What Gets Installed
 
@@ -75,6 +97,32 @@ ansible-playbook mac-local.yml --tags docker,docker-all    # Container tools (Po
 - VS Code (editor)
 - AltTab (window switcher)
 - Rectangle (window manager)
+
+## Fleet (Three Machines)
+
+`fleet/` installs the software each of three machines needs. Configuration is not in scope here.
+
+| Machine | Script | Installs |
+| --- | --- | --- |
+| Mac mini M4 | `./fleet/studio.sh` | tailscale, gh, restic |
+| MacBook Pro 15 (Intel) | `./fleet/foundry.sh` | the above + aldente (80% charge limit) |
+| ThinkPad T450 / Mint 22.2 | `./fleet/harbor.sh` | apt basics, tailscale, docker-ce |
+
+Same split as the rest of this repo: Ansible does the installing; each script is a thin wrapper that
+checks the OS, installs Ansible if missing, and adds `--ask-become-pass` on Linux.
+
+```bash
+cd fleet
+./studio.sh                  # on the Mac mini
+./harbor.sh --tags docker    # only Docker; any other flag is passed through to ansible-playbook
+./harbor.sh --dry-run        # ansible --check --diff
+./harbor.sh --list-tags
+```
+
+Or skip the wrapper entirely — `ansible-playbook fleet/harbor.yml --ask-become-pass` does the same.
+The playbooks use `import_tasks` rather than `include_tasks`, so fine-grained tags like
+`--tags gh` select the individual task. See [`fleet/README.md`](fleet/README.md) for what still
+has to be done by hand afterwards (Tailscale login, docker group re-login, AlDente's charge limit).
 
 ## Workspace Management
 

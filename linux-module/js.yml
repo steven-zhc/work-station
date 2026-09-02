@@ -1,0 +1,52 @@
+---
+# Node.js / Bun (Debian/Ubuntu)
+# 对应 mac-module/js.yml。node_version 由 linux-local.yml 传入。
+
+- name: Install Volta
+  # apt 源里没有 volta，用官方脚本装到 ~/.volta（不需要 root）
+  ansible.builtin.shell: curl -fsSL https://get.volta.sh | bash -s -- --skip-setup
+  args:
+    creates: "{{ ansible_env.HOME }}/.volta/bin/volta"
+  tags: [js-all, volta]
+
+- name: 把 volta 加进 fish 的 PATH
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    line: "set -gx VOLTA_HOME $HOME/.volta; fish_add_path $VOLTA_HOME/bin"
+    create: true
+    mode: "0644"
+  tags: [js-all, volta]
+
+- name: Install Node.js via Volta
+  ansible.builtin.shell: "{{ ansible_env.HOME }}/.volta/bin/volta install node@{{ node_version }}"
+  args:
+    creates: "{{ ansible_env.HOME }}/.volta/tools/image/node/{{ node_version }}"
+  tags: [js-all, node]
+
+- name: Install pnpm via Volta
+  ansible.builtin.shell: "{{ ansible_env.HOME }}/.volta/bin/volta install pnpm"
+  args:
+    creates: "{{ ansible_env.HOME }}/.volta/bin/pnpm"
+  tags: [js-all, pnpm]
+
+- name: Run pnpm setup (global bin dir)
+  ansible.builtin.shell: "{{ ansible_env.HOME }}/.volta/bin/pnpm setup"
+  args:
+    creates: "{{ ansible_env.HOME }}/.local/share/pnpm"
+  environment:
+    PATH: "{{ ansible_env.HOME }}/.volta/bin:{{ ansible_env.PATH }}"
+  tags: [js-all, pnpm]
+
+- name: Install Bun
+  ansible.builtin.shell: curl -fsSL https://bun.sh/install | bash
+  args:
+    creates: "{{ ansible_env.HOME }}/.bun/bin/bun"
+  tags: [js-all, bun]
+
+- name: 把 bun 加进 fish 的 PATH
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    line: "fish_add_path $HOME/.bun/bin"
+    create: true
+    mode: "0644"
+  tags: [js-all, bun]

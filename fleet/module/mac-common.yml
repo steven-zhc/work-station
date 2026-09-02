@@ -1,0 +1,40 @@
+---
+# 两台 Mac 共用。标签风格与 mac-module/ 一致：[<模块>-all, <工具>]
+
+- name: Install tailscale (cask)
+  # 用 ignore_errors 而不是 failed_when: false —— 后者会把 failed 直接置成 False，
+  # 下面的兜底任务就永远不会触发，结果两个都没装、play 还报成功。
+  homebrew_cask:
+    name: tailscale-app
+    state: present
+  register: fleet_ts
+  ignore_errors: true
+  tags: [common-all, tailscale]
+
+- name: Install tailscale (旧 cask 名，兜底)
+  homebrew_cask:
+    name: tailscale
+    state: present
+  when: fleet_ts.failed | default(false)
+  register: fleet_ts2
+  ignore_errors: true
+  tags: [common-all, tailscale]
+
+- name: 两个 cask 名都装不上就报错，别静默通过
+  ansible.builtin.assert:
+    that:
+      - not (fleet_ts.failed | default(false)) or not (fleet_ts2.failed | default(false))
+    fail_msg: "tailscale-app 和 tailscale 两个 cask 名都装不上，brew search tailscale 看看现在叫什么"
+  tags: [common-all, tailscale]
+
+- name: Install gh
+  homebrew:
+    name: gh
+    state: present
+  tags: [common-all, gh]
+
+- name: Install restic
+  homebrew:
+    name: restic
+    state: present
+  tags: [common-all, restic]

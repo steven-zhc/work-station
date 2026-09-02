@@ -1,0 +1,15 @@
+---
+# studio · Mac mini M4
+#
+# 只装 fleet 这条链路额外需要的东西。日常开发工具链（node / cli / 字体 / 应用 /
+# AI 工具）仍然走仓库根的 mac-local.yml，这里不重复。
+#
+# 用法：./studio.sh              或  ansible-playbook fleet/studio.yml
+#       ./studio.sh --tags gh    只装某一项
+- name: Fleet · studio 软件安装
+  hosts: localhost
+  connection: local
+  tasks:
+    - name: Import 三台共用的 macOS 工具
+      import_tasks: module/mac-common.yml
+      tags: [fleet-all, common]

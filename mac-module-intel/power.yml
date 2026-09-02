@@ -1,0 +1,37 @@
+---
+# Intel Mac 的电源与散热
+#
+# 这两个是真正只在 Intel 上有意义的：
+#   bclm 通过 SMC 限制充电上限 —— Apple Silicon 没有这个 SMC 接口，装了也没用。
+#   Macs Fan Control 对 2018 款 15 寸这类散热吃紧的机型才有价值。
+# 长期插电运行的机器不做充电管理，电池鼓包是迟早的事。
+
+- name: Tap zackelia/formulae for bclm
+  homebrew_tap:
+    tap: zackelia/formulae
+    state: present
+  tags: [intel-all, power, bclm]
+
+- name: Install bclm (SMC 充电上限，Intel 专属)
+  homebrew:
+    name: zackelia/formulae/bclm
+    state: present
+  tags: [intel-all, power, bclm]
+
+- name: 提示 bclm 还需要手动设置
+  # 写 SMC 要 root，而且是一次性的配置动作，不适合放在装软件的 playbook 里
+  ansible.builtin.debug:
+    msg: "充电上限设 80%：sudo bclm write 80 && sudo bclm persist"
+  tags: [intel-all, power, bclm]
+
+- name: Install Macs Fan Control
+  homebrew_cask:
+    name: macs-fan-control
+    state: present
+  tags: [intel-all, power, fan]
+
+- name: Install stats (菜单栏温度/负载)
+  homebrew_cask:
+    name: stats
+    state: present
+  tags: [intel-all, power, stats]

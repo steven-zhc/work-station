@@ -1,0 +1,58 @@
+---
+# Linux 开发环境（Debian/Ubuntu 系，目标是 Linux Mint 22.2）
+# 对应 mac-local.yml。服务器子集：不装 GUI 应用、字体、Java。
+#
+# 用法：
+#   ansible-playbook linux-local.yml --ask-become-pass
+#   ansible-playbook linux-local.yml --tags cli,cli-all -K
+#   ansible-playbook linux-local.yml --tags docker -K
+#   ansible-playbook linux-local.yml --list-tags
+- name: Setup Linux Workspace
+  hosts: localhost
+  connection: local
+  vars:
+    node_version: "24"
+  tasks:
+    - name: 探测 Ubuntu 代号
+      # Mint 22.2 的 VERSION_CODENAME 是它自己的代号 zara，Docker 等第三方源里
+      # 都没有这个发行版；ansible_lsb.codename 拿到的也是它。
+      # 必须读 /etc/os-release 里的 UBUNTU_CODENAME（noble）。
+      ansible.builtin.shell: . /etc/os-release && echo "${UBUNTU_CODENAME:-}"
+      register: codename_out
+      changed_when: false
+      check_mode: false
+      tags: [always]
+
+    - name: 记下 Ubuntu 代号
+      ansible.builtin.set_fact:
+        ubuntu_codename: "{{ codename_out.stdout | trim }}"
+      tags: [always]
+
+    - name: 代号必须非空
+      ansible.builtin.assert:
+        that: ubuntu_codename | length > 0
+        fail_msg: "/etc/os-release 里没有 UBUNTU_CODENAME —— 这不是基于 Ubuntu 的发行版？"
+      tags: [always]
+
+    # 用 import_tasks 而不是 include_tasks：import 是静态的，子任务在解析期就摊平，
+    # --tags fzf 这种细粒度标签才选得中。include 是动态的，标签不在 include 本身
+    # 上就永远匹配不到里面的任务。
+    - name: Import CLI tools
+      import_tasks: linux-module/cli.yml
+      tags: [cli]
+
+    - name: Import shell configuration
+      import_tasks: linux-module/shell.yml
+      tags: [shell]
+
+    - name: Import Node.js and Bun setup
+      import_tasks: linux-module/js.yml
+      tags: [js]
+
+    - name: Import Python tools
+      import_tasks: linux-module/python.yml
+      tags: [python]
+
+    - name: Import Docker
+      import_tasks: linux-module/docker.yml
+      tags: [docker]

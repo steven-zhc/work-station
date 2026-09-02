@@ -1,0 +1,37 @@
+---
+# Tailscale（官方 apt 源）
+# 只负责装。登录（tailscale up）要开浏览器授权，是配置，不在这里。
+
+- name: 下载 Tailscale apt 签名密钥
+  ansible.builtin.get_url:
+    # 用 ubuntu_codename（noble），不是 Mint 自己的代号
+    url: "https://pkgs.tailscale.com/stable/ubuntu/{{ ubuntu_codename }}.noarmor.gpg"
+    dest: /usr/share/keyrings/tailscale-archive-keyring.gpg
+    mode: "0644"
+  tags: [tailscale-all, tailscale]
+
+- name: 添加 Tailscale apt 源
+  ansible.builtin.apt_repository:
+    repo: "deb [signed-by=/usr/share/keyrings/tailscale-archive-keyring.gpg] https://pkgs.tailscale.com/stable/ubuntu {{ ubuntu_codename }} main"
+    filename: tailscale
+    state: present
+  tags: [tailscale-all, tailscale]
+
+- name: Install tailscale
+  ansible.builtin.apt:
+    name: tailscale
+    state: present
+    update_cache: true
+  tags: [tailscale-all, tailscale]
+
+- name: 启用 tailscaled
+  ansible.builtin.systemd_service:
+    name: tailscaled
+    enabled: true
+    state: started
+  tags: [tailscale-all, tailscale]
+
+- name: 提示还需要登录
+  ansible.builtin.debug:
+    msg: "装好了。还需要手动跑一次：sudo tailscale up --hostname=harbor --ssh"
+  tags: [tailscale-all, tailscale]

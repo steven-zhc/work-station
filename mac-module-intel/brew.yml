@@ -1,0 +1,29 @@
+---
+# Homebrew 前缀差异
+#
+# Intel Mac 的 brew 装在 /usr/local，Apple Silicon 在 /opt/homebrew。
+# mac-module/ 里已经有几处按 ansible_architecture 分叉（java.yml 的 OpenJDK
+# 软链、mac-local.yml 的 fish_shell_path），这里补上 shellenv ——
+# 它除了 PATH 还会设 HOMEBREW_PREFIX / MANPATH / INFOPATH。
+
+- name: 确认 Homebrew 装在 /usr/local
+  ansible.builtin.stat:
+    path: /usr/local/bin/brew
+  register: intel_brew
+  tags: [intel-all, brew]
+
+- name: 找不到就明确报错，别让后面的任务莫名其妙失败
+  ansible.builtin.assert:
+    that: intel_brew.stat.exists
+    fail_msg: >-
+      /usr/local/bin/brew 不存在。Intel Mac 的 Homebrew 应该在 /usr/local；
+      如果它在 /opt/homebrew，说明你在 Apple Silicon 上跑了这个 playbook。
+  tags: [intel-all, brew]
+
+- name: Ensure brew shellenv in fish config
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    line: 'eval (/usr/local/bin/brew shellenv)'
+    create: true
+    mode: "0644"
+  tags: [intel-all, brew]

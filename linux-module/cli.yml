@@ -1,0 +1,145 @@
+---
+# Command Line Interface Tools (Debian/Ubuntu)
+# 对应 mac-module/cli.yml —— 每个工具一个任务、一个标签，和那边保持一致。
+
+- name: Install 基础包
+  ansible.builtin.apt:
+    name: [ca-certificates, curl, gnupg, git, unzip, build-essential]
+    state: present
+    update_cache: true
+    cache_valid_time: 3600
+  become: true
+  tags: [cli-all, base]
+
+- name: Install fzf
+  ansible.builtin.apt: { name: fzf, state: present }
+  become: true
+  tags: [cli-all, fzf]
+
+- name: Install bat
+  ansible.builtin.apt: { name: bat, state: present }
+  become: true
+  tags: [cli-all, bat]
+
+- name: Install httpie
+  ansible.builtin.apt: { name: httpie, state: present }
+  become: true
+  tags: [cli-all, httpie]
+
+- name: Install tmux
+  ansible.builtin.apt: { name: tmux, state: present }
+  become: true
+  tags: [cli-all, tmux]
+
+- name: Install jq
+  ansible.builtin.apt: { name: jq, state: present }
+  become: true
+  tags: [cli-all, jq]
+
+- name: Install wget
+  ansible.builtin.apt: { name: wget, state: present }
+  become: true
+  tags: [cli-all, wget]
+
+- name: Install zoxide
+  ansible.builtin.apt: { name: zoxide, state: present }
+  become: true
+  tags: [cli-all, zoxide]
+
+- name: Install fd
+  ansible.builtin.apt: { name: fd-find, state: present }
+  become: true
+  tags: [cli-all, fd]
+
+- name: Install ripgrep
+  ansible.builtin.apt: { name: ripgrep, state: present }
+  become: true
+  tags: [cli-all, ripgrep]
+
+- name: 确保 ~/.local/bin 存在
+  ansible.builtin.file:
+    path: "{{ ansible_env.HOME }}/.local/bin"
+    state: directory
+    mode: "0755"
+  tags: [cli-all, bat, fd]
+
+- name: 建 bat / fd 的符号链接
+  # Debian 系里这两个二进制叫 batcat 和 fdfind（和别的包重名），
+  # 不建链接的话 dotfile 里写的 bat / fd 全都不存在。
+  ansible.builtin.file:
+    src: "/usr/bin/{{ item.src }}"
+    dest: "{{ ansible_env.HOME }}/.local/bin/{{ item.dest }}"
+    state: link
+    force: true
+  loop:
+    - { src: batcat, dest: bat }
+    - { src: fdfind, dest: fd }
+  tags: [cli-all, bat, fd]
+
+- name: 查 lazygit 最新版本
+  # apt 源里没有 lazygit，取 GitHub release
+  ansible.builtin.uri:
+    url: https://api.github.com/repos/jesseduffield/lazygit/releases/latest
+    return_content: true
+  register: lazygit_release
+  changed_when: false
+  tags: [cli-all, lazygit]
+
+- name: Install lazygit
+  ansible.builtin.unarchive:
+    src: "https://github.com/jesseduffield/lazygit/releases/download/{{ lazygit_release.json.tag_name }}/lazygit_{{ lazygit_release.json.tag_name | regex_replace('^v', '') }}_Linux_x86_64.tar.gz"
+    dest: /usr/local/bin
+    remote_src: true
+    include: [lazygit]
+    mode: "0755"
+    creates: /usr/local/bin/lazygit
+  become: true
+  tags: [cli-all, lazygit]
+
+- name: Install neovim
+  ansible.builtin.apt: { name: neovim, state: present }
+  become: true
+  tags: [cli-all, neovim]
+
+- name: Backup existing neovim config
+  shell: mv ~/.config/nvim ~/.config/nvim.bak
+  args:
+    creates: ~/.config/nvim.bak
+  ignore_errors: yes
+  tags: [neovim, astronvim, cli-all]
+
+- name: Backup existing neovim share
+  shell: mv ~/.local/share/nvim ~/.local/share/nvim.bak
+  args:
+    creates: ~/.local/share/nvim.bak
+  ignore_errors: yes
+  tags: [neovim, astronvim, cli-all]
+
+- name: Backup existing neovim state
+  shell: mv ~/.local/state/nvim ~/.local/state/nvim.bak
+  args:
+    creates: ~/.local/state/nvim.bak
+  ignore_errors: yes
+  tags: [neovim, astronvim, cli-all]
+
+- name: Backup existing neovim cache
+  shell: mv ~/.cache/nvim ~/.cache/nvim.bak
+  args:
+    creates: ~/.cache/nvim.bak
+  ignore_errors: yes
+  tags: [neovim, astronvim, cli-all]
+
+- name: Clone AstroNvim configuration
+  git:
+    repo: https://github.com/AstroNvim/template
+    dest: "{{ lookup('env','HOME') }}/.config/nvim"
+    clone: yes
+    update: yes
+  tags: [neovim, astronvim, cli-all]
+
+- name: 提示 herdr 在 Linux 上没有包
+  # mac-module/cli.yml 用 brew 装 herdr，Linux 这边没有对应的源。
+  # script/hx 依赖它，需要的话去 https://herdr.dev 看安装方式。
+  ansible.builtin.debug:
+    msg: "herdr 没装（Linux 无 apt 包）。script/hx 需要它，见 https://herdr.dev"
+  tags: [cli-all, herdr]
