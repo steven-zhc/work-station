@@ -21,9 +21,9 @@
 
 - name: 添加 Docker apt 源
   ansible.builtin.apt_repository:
-    # 用 ubuntu_codename 而不是 VERSION_CODENAME / ansible_lsb.codename：
+    # 用 ubuntu_codename 而不是 VERSION_CODENAME / ansible_facts['lsb']['codename']：
     # Mint 22.2 的自有代号是 zara，Docker 源里没有这个发行版。
-    repo: "deb [arch={{ ansible_architecture | replace('x86_64','amd64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ubuntu_codename }} stable"
+    repo: "deb [arch={{ ansible_facts['architecture'] | replace('x86_64','amd64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ubuntu_codename }} stable"
     filename: docker
     state: present
   become: true

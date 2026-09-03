@@ -5,17 +5,17 @@
 - name: Ensure uv installer script is run
   ansible.builtin.shell: curl -LsSf https://astral.sh/uv/install.sh | sh
   args:
-    creates: "{{ ansible_env.HOME }}/.local/bin/uv"
+    creates: "{{ ansible_facts['env']['HOME'] }}/.local/bin/uv"
   tags: [python-all, uv]
 
 - name: Verify uv command is available
-  ansible.builtin.command: "{{ ansible_env.HOME }}/.local/bin/uv --version"
+  ansible.builtin.command: "{{ ansible_facts['env']['HOME'] }}/.local/bin/uv --version"
   register: uv_version
   changed_when: false
   tags: [python-all, uv]
 
 - name: Install latest Python via uv
-  ansible.builtin.command: "{{ ansible_env.HOME }}/.local/bin/uv python install"
+  ansible.builtin.command: "{{ ansible_facts['env']['HOME'] }}/.local/bin/uv python install"
   register: uv_python
   changed_when: "'Installed' in uv_python.stdout"
   tags: [python-all, uv]

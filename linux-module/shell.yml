@@ -13,14 +13,14 @@
 
 - name: 确保 fish 配置目录存在
   ansible.builtin.file:
-    path: "{{ ansible_env.HOME }}/.config/fish/conf.d"
+    path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/conf.d"
     state: directory
     mode: "0755"
   tags: [shell-all, fish]
 
 - name: Source custom env file in Fish
   ansible.builtin.lineinfile:
-    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/config.fish"
     line: "test -f ~/.config/fish/env.fish; and source ~/.config/fish/env.fish"
     create: true
     mode: "0644"
@@ -28,7 +28,7 @@
 
 - name: Source aliases file in Fish
   ansible.builtin.lineinfile:
-    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/config.fish"
     line: "test -f ~/.config/fish/aliases.fish; and source ~/.config/fish/aliases.fish"
     create: true
     mode: "0644"
@@ -37,7 +37,7 @@
 - name: 把 ~/.local/bin 加进 fish 的 PATH
   # cli.yml 里的 bat/fd 链接、mise 和 uv 都在这里
   ansible.builtin.lineinfile:
-    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/config.fish"
     line: "fish_add_path ~/.local/bin"
     create: true
     mode: "0644"
@@ -60,7 +60,7 @@
 
 - name: Ensure starship init in fish config
   ansible.builtin.lineinfile:
-    path: "{{ ansible_env.HOME }}/.config/fish/config.fish"
+    path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/config.fish"
     line: "starship init fish | source"
     create: true
     mode: "0644"

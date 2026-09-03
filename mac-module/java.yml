@@ -11,7 +11,7 @@
 
 - name: Set OpenJDK path based on architecture
   set_fact:
-    openjdk_path: "{{ '/opt/homebrew/opt/openjdk/libexec/openjdk.jdk' if ansible_architecture == 'arm64' else '/usr/local/opt/openjdk/libexec/openjdk.jdk' }}"
+    openjdk_path: "{{ '/opt/homebrew/opt/openjdk/libexec/openjdk.jdk' if ansible_facts['architecture'] == 'arm64' else '/usr/local/opt/openjdk/libexec/openjdk.jdk' }}"
   tags:
     - java-all
     - jdk

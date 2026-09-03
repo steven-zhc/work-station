@@ -15,7 +15,7 @@
   tasks:
     - name: 探测 Ubuntu 代号
       # Mint 22.2 的 VERSION_CODENAME 是它自己的代号 zara，Docker 等第三方源里
-      # 都没有这个发行版；ansible_lsb.codename 拿到的也是它。
+      # 都没有这个发行版；ansible_facts['lsb']['codename'] 拿到的也是它。
       # 必须读 /etc/os-release 里的 UBUNTU_CODENAME（noble）。
       ansible.builtin.shell: . /etc/os-release && echo "${UBUNTU_CODENAME:-}"
       register: codename_out

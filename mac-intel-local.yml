@@ -16,12 +16,12 @@
     node_version: "24"
     fish_shell_path: "/usr/local/bin/fish"
   tasks:
-    - name: 必须是 Intel Mac
+    - name: Verify this is an Intel Mac
       # 在 Mac mini(M4) 上误跑这个 playbook 的话，bclm 这类东西装了也没用，
       # brew 前缀断言还会失败。这里提前拦住，给一句能看懂的话。
       ansible.builtin.assert:
-        that: ansible_architecture == "x86_64"
-        fail_msg: "这台是 {{ ansible_architecture }}，不是 Intel Mac。Apple Silicon 请用 mac-local.yml"
+        that: ansible_facts['architecture'] == "x86_64"
+        fail_msg: "This machine uses {{ ansible_facts['architecture'] }}, not Intel x86_64. Use mac-local.yml on Apple Silicon."
       tags: [always]
 
     # 用 import_tasks 而不是 include_tasks：import 是静态的，子任务在解析期就摊平，
@@ -55,10 +55,10 @@
       tags: [docker]
 
     # ---- Intel 专属 ----
-    - name: Import Homebrew 前缀差异
+    - name: Import Intel Homebrew prefix setup
       import_tasks: mac-module-intel/brew.yml
       tags: [intel]
 
-    - name: Import 电源与散热
+    - name: Import Intel power and thermal tools
       import_tasks: mac-module-intel/power.yml
       tags: [intel]

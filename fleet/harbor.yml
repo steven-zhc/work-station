@@ -15,7 +15,7 @@
     - name: 探测 Ubuntu 代号
       # Mint 22.2 的 VERSION_CODENAME 是 zara，Docker 和 Tailscale 的源里都没有这个
       # 发行版。必须用 /etc/os-release 里的 UBUNTU_CODENAME（noble）。
-      # 同理也不能用 ansible_lsb.codename —— 那拿到的还是 Mint 自己的代号。
+      # 同理也不能用 ansible_facts['lsb']['codename'] —— 那拿到的还是 Mint 自己的代号。
       ansible.builtin.shell: . /etc/os-release && echo "$UBUNTU_CODENAME"
       register: fleet_codename_out
       changed_when: false
@@ -42,4 +42,3 @@
     - name: Import Tailscale
       import_tasks: module/linux-tailscale.yml
       tags: [fleet-all, tailscale]
-

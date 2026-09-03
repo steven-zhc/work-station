@@ -12,16 +12,16 @@
     state: present
   tags: [intel-all, power, bclm]
 
-- name: Install bclm (SMC 充电上限，Intel 专属)
+- name: Install bclm for the Intel SMC charge limit
   homebrew:
     name: zackelia/formulae/bclm
     state: present
   tags: [intel-all, power, bclm]
 
-- name: 提示 bclm 还需要手动设置
+- name: Show the manual bclm configuration command
   # 写 SMC 要 root，而且是一次性的配置动作，不适合放在装软件的 playbook 里
   ansible.builtin.debug:
-    msg: "充电上限设 80%：sudo bclm write 80 && sudo bclm persist"
+    msg: "Set the charge limit to 80%: sudo bclm write 80 && sudo bclm persist"
   tags: [intel-all, power, bclm]
 
 - name: Install Macs Fan Control
@@ -30,7 +30,7 @@
     state: present
   tags: [intel-all, power, fan]
 
-- name: Install stats (菜单栏温度/负载)
+- name: Install stats for menu bar temperature and system load
   homebrew_cask:
     name: stats
     state: present

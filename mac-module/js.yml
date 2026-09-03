@@ -34,9 +34,10 @@
     - js-all
 
 - name: Install pnpm via mise
-  shell: mise use --global pnpm@latest
+  # The default Aqua backend does not publish pnpm for Intel macOS.
+  shell: mise use --global npm:pnpm@latest
   args:
-    creates: "{{ lookup('env','HOME') }}/.local/share/mise/installs/pnpm/latest"
+    creates: "{{ lookup('env','HOME') }}/.local/share/mise/installs/npm-pnpm/latest"
   tags:
     - mise
     - pnpm
