@@ -3,7 +3,7 @@
 # 对应 mac-module/docker.yml（那边是 podman）。
 # 依赖 linux-local.yml 开头探测出来的 ubuntu_codename。
 
-- name: 创建 keyrings 目录
+- name: Ensure the APT keyring directory exists
   ansible.builtin.file:
     path: /etc/apt/keyrings
     state: directory
@@ -11,7 +11,7 @@
   become: true
   tags: [docker-all, docker]
 
-- name: 下载 Docker apt 签名密钥
+- name: Download the Docker APT signing key
   ansible.builtin.get_url:
     url: https://download.docker.com/linux/ubuntu/gpg
     dest: /etc/apt/keyrings/docker.asc
@@ -19,17 +19,63 @@
   become: true
   tags: [docker-all, docker]
 
-- name: 添加 Docker apt 源
-  ansible.builtin.apt_repository:
-    # 用 ubuntu_codename 而不是 VERSION_CODENAME / ansible_facts['lsb']['codename']：
-    # Mint 22.2 的自有代号是 zara，Docker 源里没有这个发行版。
-    repo: "deb [arch={{ ansible_facts['architecture'] | replace('x86_64','amd64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ubuntu_codename }} stable"
-    filename: docker
-    state: present
+- name: Find legacy Docker APT list files
+  ansible.builtin.find:
+    paths: /etc/apt
+    patterns: "*.list"
+    excludes: docker.list
+    contains: "download\\.docker\\.com/linux/ubuntu"
+    read_whole_file: true
+    recurse: true
+    file_type: file
+  become: true
+  register: legacy_docker_list_files
+  tags: [docker-all, docker]
+
+- name: Remove legacy Docker APT list entries
+  ansible.builtin.lineinfile:
+    path: "{{ item.path }}"
+    regexp: "^[^#].*download\\.docker\\.com/linux/ubuntu.*$"
+    state: absent
+  loop: "{{ legacy_docker_list_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
   become: true
   tags: [docker-all, docker]
 
-- name: Install Docker CE 与插件
+- name: Find Docker Deb822 source files
+  ansible.builtin.find:
+    paths: /etc/apt/sources.list.d
+    patterns: "*.sources"
+    contains: "download\\.docker\\.com/linux/ubuntu"
+    read_whole_file: true
+    file_type: file
+  become: true
+  register: docker_deb822_source_files
+  tags: [docker-all, docker]
+
+- name: Remove Docker Deb822 source files
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ docker_deb822_source_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: true
+  tags: [docker-all, docker]
+
+- name: Configure the Docker APT repository
+  ansible.builtin.copy:
+    # 用 ubuntu_codename 而不是 VERSION_CODENAME / ansible_facts['lsb']['codename']：
+    # Mint 22.2 的自有代号是 zara，Docker 源里没有这个发行版。
+    content: |
+      deb [arch={{ ansible_facts['architecture'] | replace('x86_64','amd64') }} signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu {{ ubuntu_codename }} stable
+    dest: /etc/apt/sources.list.d/docker.list
+    mode: "0644"
+  become: true
+  tags: [docker-all, docker]
+
+- name: Install Docker CE and plugins
   ansible.builtin.apt:
     name:
       - docker-ce
@@ -42,7 +88,7 @@
   become: true
   tags: [docker-all, docker]
 
-- name: 启用 docker
+- name: Enable and start Docker
   ansible.builtin.systemd_service:
     name: docker
     enabled: true
@@ -50,7 +96,7 @@
   become: true
   tags: [docker-all, docker]
 
-- name: 把当前用户加进 docker 组
+- name: Add the current user to the docker group
   ansible.builtin.user:
     name: "{{ lookup('env','USER') }}"
     groups: docker
@@ -59,10 +105,10 @@
   register: docker_group
   tags: [docker-all, docker]
 
-- name: 提示需要重新登录
+- name: Show the login refresh reminder
   ansible.builtin.debug:
     msg: >-
-      已加进 docker 组 —— 需要注销重新登录才生效。
-      验证：id -nG | tr ' ' '\n' | grep -x docker
+      The current user was added to the docker group. Log out and back in
+      before using Docker without sudo. Verify with: id -nG | grep -w docker
   when: docker_group is changed
   tags: [docker-all, docker]
