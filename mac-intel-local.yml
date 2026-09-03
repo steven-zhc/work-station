@@ -1,8 +1,8 @@
 ---
 # Intel Mac 开发环境（MacBook Pro 15 2018）
 #
-# 和 mac-local.yml 是兄弟关系：通用模块直接复用 mac-module/，
-# 只额外加 mac-module-intel/ 里那些在 Apple Silicon 上没有意义的东西。
+# 和 mac-local.yml 是兄弟关系：大部分通用模块复用 mac-module/，
+# Intel 专用替代项和额外工具放在 mac-module-intel/。
 #
 # 用法：
 #   ansible-playbook mac-intel-local.yml
@@ -50,8 +50,8 @@
       import_tasks: mac-module/ai.yml
       tags: [ai]
 
-    - name: Import Docker/Container tools
-      import_tasks: mac-module/docker.yml
+    - name: Import Docker image build tools
+      import_tasks: mac-module-intel/docker.yml
       tags: [docker]
 
     # ---- Intel 专属 ----

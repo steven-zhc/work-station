@@ -56,11 +56,12 @@ ansible-playbook mac-local.yml --tags font,font-all        # Nerd fonts
 ansible-playbook mac-local.yml --tags cli,cli-all          # CLI utilities
 ansible-playbook mac-local.yml --tags python,python-all    # Python/uv
 ansible-playbook mac-local.yml --tags ai,ai-all            # AI tools (Claude Code)
-ansible-playbook mac-local.yml --tags docker,docker-all    # Container tools (Podman)
+ansible-playbook mac-local.yml --tags docker,docker-all    # Container tools (Podman on Apple Silicon)
 
-# Intel Mac — same modules plus the Intel-only bits (/usr/local brew prefix, bclm, fan control)
+# Intel Mac — shared modules plus Intel-specific container, Homebrew, power, and thermal setup
 ansible-playbook mac-intel-local.yml
 ansible-playbook mac-intel-local.yml --tags intel-all      # only the Intel-specific parts
+ansible-playbook mac-intel-local.yml --tags docker         # Docker builds through Colima on Intel
 
 # Linux (server subset: cli, shell, js, python, docker — no GUI apps, fonts, or Java)
 ansible-playbook linux-local.yml --ask-become-pass
@@ -90,7 +91,7 @@ dynamic include.
 - **Network**: curl, wget, httpie
 - **Development**: jq, i2cssh
 - **AI**: Claude Code CLI
-- **Containers**: Podman, podman-compose
+- **Containers**: Podman on Apple Silicon; Docker CLI, Buildx, and Colima on Intel
 
 ### Applications
 - iTerm2 (terminal)

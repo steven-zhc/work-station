@@ -1,0 +1,55 @@
+---
+# Docker-compatible image builds for Intel Macs.
+# Podman 6 requires Apple Silicon, so Colima supplies the Linux VM and Docker daemon.
+
+- name: Install Docker image build tools
+  homebrew:
+    name:
+      - colima
+      - docker
+      - docker-buildx
+    state: present
+  tags: [docker-all, docker, colima, docker-buildx]
+
+- name: Find the Docker Buildx Homebrew prefix
+  ansible.builtin.command: brew --prefix docker-buildx
+  register: docker_buildx_prefix
+  changed_when: false
+  tags: [docker-all, docker, docker-buildx]
+
+- name: Ensure the Docker CLI plugin directory exists
+  ansible.builtin.file:
+    path: "{{ ansible_facts['user_dir'] }}/.docker/cli-plugins"
+    state: directory
+    mode: "0755"
+  tags: [docker-all, docker, docker-buildx]
+
+- name: Enable the Docker Buildx plugin
+  ansible.builtin.file:
+    src: "{{ docker_buildx_prefix.stdout }}/bin/docker-buildx"
+    dest: "{{ ansible_facts['user_dir'] }}/.docker/cli-plugins/docker-buildx"
+    state: link
+    force: true
+  tags: [docker-all, docker, docker-buildx]
+
+- name: Check whether Colima is running
+  ansible.builtin.command: colima status
+  register: colima_status
+  changed_when: false
+  failed_when: false
+  tags: [docker-all, docker, colima]
+
+- name: Start Colima with the Docker runtime
+  ansible.builtin.command: colima start --runtime docker --arch x86_64
+  when: colima_status.rc != 0
+  tags: [docker-all, docker, colima]
+
+- name: Verify the Docker daemon is available
+  ansible.builtin.command: docker info
+  changed_when: false
+  tags: [docker-all, docker, colima]
+
+- name: Verify the Docker image builder is available
+  ansible.builtin.command: docker buildx version
+  changed_when: false
+  tags: [docker-all, docker, docker-buildx]
