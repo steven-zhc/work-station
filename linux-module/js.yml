@@ -38,7 +38,7 @@
 # /bin/sh，于是报 ERR_PNPM_NO_SHELL_CONFIG 直接失败（rc=1）。
 - name: Ensure pnpm global bin dir
   ansible.builtin.file:
-    path: "{{ ansible_facts['env']['HOME'] }}/.local/share/pnpm"
+    path: "{{ ansible_facts['env']['HOME'] }}/.local/share/pnpm/bin"
     state: directory
     mode: "0755"
   tags: [js-all, pnpm]
@@ -54,7 +54,8 @@
 - name: Add PNPM_HOME to fish PATH
   ansible.builtin.lineinfile:
     path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/config.fish"
-    line: "fish_add_path $PNPM_HOME"
+    regexp: '^fish_add_path \$PNPM_HOME(?:/bin)?$'
+    line: "fish_add_path $PNPM_HOME/bin"
     create: true
     mode: "0644"
   tags: [js-all, pnpm]

@@ -48,7 +48,7 @@
 # 建全局 bin 目录、把它写进 shell 配置——这里自己做，顺带也更幂等。
 - name: Ensure pnpm global bin dir
   file:
-    path: "{{ lookup('env','HOME') }}/Library/pnpm"
+    path: "{{ lookup('env','HOME') }}/Library/pnpm/bin"
     state: directory
     mode: '0755'
   tags: [pnpm, pnpm_setup, js-all]
@@ -64,7 +64,8 @@
 - name: Add PNPM_HOME to fish PATH
   ansible.builtin.lineinfile:
     path: "{{ lookup('env','HOME') }}/.config/fish/config.fish"
-    line: "fish_add_path $PNPM_HOME"
+    regexp: '^fish_add_path \$PNPM_HOME(?:/bin)?$'
+    line: "fish_add_path $PNPM_HOME/bin"
     create: true
     mode: '0644'
   tags: [pnpm, pnpm_setup, js-all]
