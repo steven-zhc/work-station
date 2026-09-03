@@ -40,6 +40,8 @@
   tags: [docker-all, docker, colima]
 
 - name: Start Colima with the Docker runtime
+  # --arch 只在【创建】VM 时生效。已经存在的 Colima VM 用什么架构，这里改不了 ——
+  # 所以下面必须真的去问一遍 daemon，不能只信这条命令。
   ansible.builtin.command: colima start --runtime docker --arch x86_64
   when: colima_status.rc != 0
   tags: [docker-all, docker, colima]
@@ -47,6 +49,28 @@
 - name: Verify the Docker daemon is available
   ansible.builtin.command: docker info
   changed_when: false
+  tags: [docker-all, docker, colima]
+
+- name: Read the Docker daemon architecture
+  # {% raw %} 是为了让 Go 模板原样传给 docker，不被 Jinja 当成变量解析
+  ansible.builtin.command: "{% raw %}docker version --format {{.Server.Arch}}{% endraw %}"
+  register: colima_docker_arch
+  changed_when: false
+  tags: [docker-all, docker, colima]
+
+- name: Docker daemon must build linux/amd64 images
+  # harbor(ThinkPad T450) 是 x86_64。这台机器产出 arm64 镜像的话，丢过去直接
+  # exec format error —— 而且是部署那一刻才发现。所以在这里就钉死。
+  #
+  # 触发场景：这台机器上之前用别的架构建过 Colima VM，上面的 start 被 when 跳过，
+  # --arch x86_64 根本没机会生效。
+  ansible.builtin.assert:
+    that: colima_docker_arch.stdout | trim == "amd64"
+    success_msg: "Docker daemon 架构 amd64，产出的镜像 harbor 能直接跑"
+    fail_msg: >-
+      Docker daemon 架构是 {{ colima_docker_arch.stdout | trim }}，不是 amd64。
+      现有的 Colima VM 架构不对，重建它：
+      colima delete && colima start --runtime docker --arch x86_64
   tags: [docker-all, docker, colima]
 
 - name: Verify the Docker image builder is available

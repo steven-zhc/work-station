@@ -61,7 +61,7 @@ ansible-playbook mac-local.yml --tags docker,docker-all    # Container tools (Po
 # Intel Mac — shared modules plus Intel-specific container, Homebrew, power, and thermal setup
 ansible-playbook mac-intel-local.yml
 ansible-playbook mac-intel-local.yml --tags intel-all      # only the Intel-specific parts
-ansible-playbook mac-intel-local.yml --tags docker         # Docker builds through Colima on Intel
+ansible-playbook mac-intel-local.yml --tags docker         # Colima, pinned to x86_64 so images run on harbor
 
 # Linux (server subset: cli, shell, js, python, docker — no GUI apps, fonts, or Java)
 ansible-playbook linux-local.yml --ask-become-pass
