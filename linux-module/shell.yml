@@ -11,7 +11,7 @@
   become: true
   tags: [shell-all, fish]
 
-- name: 确保 fish 配置目录存在
+- name: Ensure the Fish configuration directory exists
   ansible.builtin.file:
     path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/conf.d"
     state: directory
@@ -34,7 +34,7 @@
     mode: "0644"
   tags: [shell-all, fish]
 
-- name: 把 ~/.local/bin 加进 fish 的 PATH
+- name: Add ~/.local/bin to the Fish PATH
   # cli.yml 里的 bat/fd 链接、mise 和 uv 都在这里
   ansible.builtin.lineinfile:
     path: "{{ ansible_facts['env']['HOME'] }}/.config/fish/config.fish"

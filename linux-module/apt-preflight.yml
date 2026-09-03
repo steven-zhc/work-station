@@ -1,0 +1,46 @@
+---
+# Repair repository definitions before any Ansible apt module initializes APT.
+
+- name: Find Docker APT list files that use the legacy key
+  ansible.builtin.find:
+    paths: "{{ apt_preflight_root | default('/etc/apt') }}"
+    patterns: "*.list"
+    contains: "(?s)(?=.*download\\.docker\\.com/linux/ubuntu)(?=.*signed-by=/etc/apt/keyrings/docker\\.gpg)"
+    read_whole_file: true
+    recurse: true
+    file_type: file
+  become: "{{ apt_preflight_become | default(true) }}"
+  register: legacy_docker_gpg_list_files
+  tags: [always]
+
+- name: Remove Docker APT entries that use the legacy key
+  ansible.builtin.lineinfile:
+    path: "{{ item.path }}"
+    regexp: "^(?=.*download\\.docker\\.com/linux/ubuntu)(?=.*signed-by=/etc/apt/keyrings/docker\\.gpg).*$"
+    state: absent
+  loop: "{{ legacy_docker_gpg_list_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: "{{ apt_preflight_become | default(true) }}"
+  tags: [always]
+
+- name: Find Docker Deb822 files that use the legacy key
+  ansible.builtin.find:
+    paths: "{{ apt_preflight_root | default('/etc/apt') }}/sources.list.d"
+    patterns: "*docker*.sources"
+    contains: "(?s)(?=.*download\\.docker\\.com/linux/ubuntu)(?=.*docker\\.gpg)"
+    read_whole_file: true
+    file_type: file
+  become: "{{ apt_preflight_become | default(true) }}"
+  register: legacy_docker_gpg_deb822_files
+  tags: [always]
+
+- name: Remove Docker Deb822 files that use the legacy key
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ legacy_docker_gpg_deb822_files.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+  become: "{{ apt_preflight_become | default(true) }}"
+  tags: [always]

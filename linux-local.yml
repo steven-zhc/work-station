@@ -12,8 +12,13 @@
   connection: local
   vars:
     node_version: "24"
+  pre_tasks:
+    - name: Repair conflicting APT repository definitions
+      ansible.builtin.import_tasks: linux-module/apt-preflight.yml
+      tags: [always]
+
   tasks:
-    - name: 探测 Ubuntu 代号
+    - name: Detect the Ubuntu codename
       # Mint 22.2 的 VERSION_CODENAME 是它自己的代号 zara，Docker 等第三方源里
       # 都没有这个发行版；ansible_facts['lsb']['codename'] 拿到的也是它。
       # 必须读 /etc/os-release 里的 UBUNTU_CODENAME（noble）。
@@ -23,15 +28,15 @@
       check_mode: false
       tags: [always]
 
-    - name: 记下 Ubuntu 代号
+    - name: Store the Ubuntu codename
       ansible.builtin.set_fact:
         ubuntu_codename: "{{ codename_out.stdout | trim }}"
       tags: [always]
 
-    - name: 代号必须非空
+    - name: Verify the Ubuntu codename is available
       ansible.builtin.assert:
         that: ubuntu_codename | length > 0
-        fail_msg: "/etc/os-release 里没有 UBUNTU_CODENAME —— 这不是基于 Ubuntu 的发行版？"
+        fail_msg: "UBUNTU_CODENAME is missing from /etc/os-release. This distribution may not be based on Ubuntu."
       tags: [always]
 
     # 用 import_tasks 而不是 include_tasks：import 是静态的，子任务在解析期就摊平，
