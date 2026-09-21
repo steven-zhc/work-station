@@ -247,7 +247,10 @@ set DZ_PASSWORD (openssl rand -base64 18 | tr -d '/+=')
 if test -z "$DZ_PASSWORD"
     echo "DZ_PASSWORD 是空的，重新执行上面的 set"
 else
-    echo "Dozzle 密码：$DZ_PASSWORD"      # 记下来，下一步存进 Keychain
+    # 明文也存一份进 .env（已是 600），下一步直接从这里管道进 Keychain，不经过屏幕。
+    # 先删掉旧的 DZ_PASSWORD 行，重复执行不会叠加；PG_* 那几行不动。
+    sed -i '/^DZ_PASSWORD=/d' .env
+    printf 'DZ_PASSWORD=%s\n' "$DZ_PASSWORD" >> .env
     # 先写到 .new，确认不是空文件再替换。docker run 失败的话（比如 docker context 不对），
     # 直接重定向会留下一个 0 字节的 users.yml，Dozzle 启动时报 EOF 然后一直重启。
     touch /srv/data/dozzle/users.yml.new; and chmod 600 /srv/data/dozzle/users.yml.new
@@ -260,14 +263,15 @@ end
 set -e DZ_PASSWORD
 ```
 
-存进 studio 的 Keychain。Postgres 密码直接从 harbor 管道过来，不经过屏幕：
+存进 studio 的 Keychain。两个密码都直接从 harbor 的 `.env` 管道过来，不经过屏幕：
 
 ```fish
 # [studio]  在 work-station 仓库根目录
 ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
     | tr -d '\n' | ./script/mysec.mjs postgres harbor-dev PG_PASSWORD -
 
-echo -n '<上面打印的 Dozzle 密码>' | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
+ssh harbor "grep '^DZ_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
+    | tr -d '\n' | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
 ```
 
 **`/srv/data/postgres` 里已经有别的版本（比如 16）的数据**：18 会拒绝启动 —— 数据文件不跨大版本兼容。这台机器上的开发库不需要保留，直接清空，让 18 重新初始化：
