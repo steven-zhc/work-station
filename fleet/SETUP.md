@@ -241,10 +241,14 @@ set -e PG_PASSWORD
 # Dozzle 账号：用 Dozzle 自己的生成器，哈希格式由它决定
 set DZ_PASSWORD (openssl rand -base64 18 | tr -d '/+=')
 echo "Dozzle 密码：$DZ_PASSWORD"          # 记下来，下一步存进 Keychain
-touch /srv/data/dozzle/users.yml && chmod 600 /srv/data/dozzle/users.yml
-docker run --rm amir20/dozzle:v11 generate admin \
-    --password $DZ_PASSWORD --name admin --email admin@harbor.local \
-    > /srv/data/dozzle/users.yml
+# 先写到 .new，确认不是空文件再替换。docker run 失败的话（比如 docker context 不对），
+# 直接重定向会留下一个 0 字节的 users.yml，Dozzle 启动时报 EOF 然后一直重启。
+touch /srv/data/dozzle/users.yml.new && chmod 600 /srv/data/dozzle/users.yml.new
+docker run --rm amir20/dozzle:v11 generate admin --password $DZ_PASSWORD \
+    --name admin --email admin@harbor.local > /srv/data/dozzle/users.yml.new
+and test -s /srv/data/dozzle/users.yml.new
+and mv /srv/data/dozzle/users.yml.new /srv/data/dozzle/users.yml
+or echo "生成失败，先确认 docker ps 能用"
 set -e DZ_PASSWORD
 ```
 
@@ -258,20 +262,32 @@ ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
 echo -n '<上面打印的 Dozzle 密码>' | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
 ```
 
-**harbor 上已经用 Postgres 16 初始化过数据的话**，直接换成 18 起不来 —— 数据文件不跨大版本兼容。要先导出再导入：
+**harbor 上已经用 Postgres 16 初始化过数据的话**，换成 18 起不来：数据文件不跨大版本兼容，而且 18 看到挂载点根目录里有旧格式的数据会直接拒绝启动。用一个临时的 16 容器导出，再导入到 18：
 
 ```fish
-# [harbor] 还在 16 的时候先导出
+# [harbor]
 cd /srv/stacks/base
-docker compose exec -T postgres pg_dumpall -U nextloom > ~/pg16-dump.sql
-docker compose down
-sudo mv /srv/data/postgres /srv/data/postgres-16-old      # 留着，确认 18 没问题再删
-mkdir -p /srv/data/postgres
+docker compose stop postgres
+sudo cp -a /srv/data/postgres /srv/data/postgres-16-backup      # 完整备份
+sudo rm -rf /srv/data/postgres/18                                # 18 失败时留下的空目录（如果有）
 
-# 改好 compose.yaml（18-alpine + 新挂载点）后
+# 临时 16 容器：数据目录已存在，不会重新初始化，也不需要密码
+docker run -d --name pg16-tmp -v /srv/data/postgres:/var/lib/postgresql/data postgres:16-alpine
+while not docker exec pg16-tmp pg_isready -U nextloom >/dev/null 2>&1; sleep 1; end
+docker exec pg16-tmp pg_dumpall -U nextloom > ~/pg16-dump.sql
+docker rm -f pg16-tmp
+test -s ~/pg16-dump.sql; and echo "导出 OK"
+
+# 空目录交给 18 初始化，再导入
+sudo mv /srv/data/postgres /srv/data/postgres-16-old
+mkdir /srv/data/postgres
 docker compose up -d postgres
-cat ~/pg16-dump.sql | docker compose exec -T postgres psql -U nextloom -d postgres
+while not docker compose exec -T postgres pg_isready -U nextloom >/dev/null 2>&1; sleep 1; end
+docker compose exec -T postgres psql -U nextloom -d postgres < ~/pg16-dump.sql
+docker compose exec postgres psql -U nextloom -d nextloom_dev -c '\dt'
 ```
+
+导入时的 `role "nextloom" already exists`、`database "nextloom_dev" already exists` 可以忽略 —— 18 初始化时已经建好了这两个，后面的表和数据照样导入。确认数据都在之后再删 `postgres-16-old` 和 `postgres-16-backup`。
 
 还没往 16 里放过数据的话，直接清空 `/srv/data/postgres` 再起就行。
 
