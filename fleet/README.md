@@ -1,84 +1,63 @@
-# fleet · 三台机器的软件安装
+# fleet · 三台机器
 
-只做一件事：**装好三机流水线额外需要的软件**。装完之后的配置（Tailscale、harbor 服务栈、备份）见 [`SETUP.md`](SETUP.md)。
-
-通用开发环境不在这里 —— 那是仓库根的三个 playbook 的事，两边不重复：
-
-| 机器 | 通用开发环境 | fleet 额外的 |
-| --- | --- | --- |
-| Mac mini M4 | `mac-local.yml` | `fleet/studio.sh` |
-| MacBook Pro Intel | `mac-intel-local.yml` | `fleet/foundry.sh` |
-| ThinkPad / Mint | `linux-local.yml` | `fleet/harbor.sh` |
-
-约定和仓库其余部分一致：**Ansible 装软件**，每台机器一个薄 shell wrapper 负责把 ansible 本身准备好。
+`fleet/` 只负责**装软件**，用 Ansible，一台机器一个 playbook。配置（Tailscale 登录、
+harbor 的服务栈、备份、开机自启……）不在这里，全在 [`fleet/SETUP.md`](SETUP.md) 里，
+按 fish 语法逐条写好，跟着那份文档一台一台配。
 
 ```
 fleet/
-├── studio.sh   studio.yml    Mac mini M4（arm64）
-├── foundry.sh  foundry.yml   MacBook Pro 15 2018（Intel）
-├── harbor.sh   harbor.yml    ThinkPad T450 / Linux Mint 22.2
-└── module/
-    ├── mac-common.yml       tailscale · gh · restic
-    ├── mac-foundry.yml      aldente
-    ├── linux-common.yml     restic
-    └── linux-tailscale.yml  tailscale 官方源
+├── SETUP.md          配置手册（fish 语法，装完软件之后跟着这份走）
+├── studio.sh/.yml     Mac mini M4 · 设计台
+├── foundry.sh/.yml    MacBook Pro 15 (Intel) · 跑 lingtai
+├── harbor.sh/.yml      ThinkPad T450 / Mint 22.2 · 运行时主机
+└── module/            fleet 专用的任务文件（studio/foundry 共用 mac-common.yml；
+                        harbor 用 linux-common.yml + linux-tailscale.yml）
 ```
+
+日常开发工具链（Node、Python、CLI、字体、GUI 应用……）不在这三个 playbook 里，走仓库
+根目录的 `mac-local.yml` / `mac-intel-local.yml` / `linux-local.yml`。`fleet/` 的三个
+playbook只装这条链路额外需要的东西：
+
+| 机器 | 脚本 | 额外装的 |
+| --- | --- | --- |
+| Mac mini M4 | `./studio.sh` | tailscale, gh, restic |
+| MacBook Pro 15 (Intel) | `./foundry.sh` | 以上 + aldente（充电上限 80%） |
+| ThinkPad T450 / Mint 22.2 | `./harbor.sh` | apt 基础包, tailscale, restic |
 
 ## 用法
 
-在对应的机器上：
+每个脚本都是瘦包装：检查系统、缺 ansible 就先装、把 `--dry-run` 翻译成
+`--check --diff`，其余参数原样传给 `ansible-playbook`。
 
 ```bash
-cd work-station/fleet
-
-./studio.sh                 # Mac mini
-./foundry.sh                # MacBook Pro
-./harbor.sh                 # ThinkPad（会问一次 sudo 密码）
+cd fleet
+./studio.sh                  # 装全部
+./harbor.sh --tags docker    # 只装某个标签（--list-tags 看有哪些）
+./harbor.sh --dry-run        # 只看会做什么，不动系统
 ```
 
-常用参数（三个脚本一致，其余参数原样透传给 ansible-playbook）：
+跳过包装脚本也一样：`ansible-playbook fleet/harbor.yml --ask-become-pass`。
 
-```bash
-./harbor.sh --dry-run       # 只看会做什么，不动系统（ansible --check --diff）
-./harbor.sh --list-tags     # 列出可用标签
-./harbor.sh --tags tailscale # 只装 Tailscale
-./studio.sh --tags gh
-```
+标签约定：`[<module>-all, <tool>]`，比如 `common-all` / `tailscale-all`。playbook 都用
+`import_tasks`（不是 `include_tasks`），细粒度标签比如 `--tags gh` 能直接选中子任务。
 
-wrapper 只负责三件事：确认在对的操作系统上、ansible 不在就装上、Linux 上补 `--ask-become-pass`。
-不想用 wrapper 就直接跑 playbook，效果一样：
+## 顺序
 
-```bash
-ansible-playbook fleet/studio.yml
-ansible-playbook fleet/harbor.yml --ask-become-pass --tags tailscale
-```
+1. 三台各自跑一遍装软件的脚本（上面表格）。
+2. 打开 [`SETUP.md`](SETUP.md)，从第 1 节（网络 / Tailscale）开始，按机器标注
+   （`# [studio]` `# [harbor]` `# [foundry]`）逐条跑。harbor 的服务栈、密码生成、
+   备份都在那份文档里。
 
-标签风格与 `mac-module/` 一致：`[<模块>-all, <工具>]`。
+## 已经踩过的坑
 
-## 装了什么
-
-| | studio | foundry | harbor |
-| --- | :-: | :-: | :-: |
-| tailscale | ✓ | ✓ | ✓ |
-| gh | ✓ | ✓ | |
-| restic | ✓ | ✓ | ✓ |
-| aldente（充电上限 80%） | | ✓ | |
-
-CLI 工具、Node、Python、Docker 都不在这张表里 —— 那些是通用开发环境，
-分别由 `mac-local.yml` / `mac-intel-local.yml` / `linux-local.yml` 负责。
-
-## 装完还需要手动做的
-
-ansible 只能装软件，这几件事得你自己来：
-
-| 在哪 | 做什么 |
-| --- | --- |
-| 三台 | 登录 Tailscale。Mac 上打开 Tailscale.app 登录并勾 Run on login；harbor 上 `sudo tailscale up --hostname=harbor --ssh` |
-| harbor | 先跑 `ansible-playbook linux-local.yml -K` 装 Docker 等通用环境，然后**注销重新登录**让 docker 组生效 |
-| foundry | 打开 AlDente，把充电上限拖到 80% 并勾开机启动 |
-
-## 一个坑（已经在 playbook 里处理了）
-
-Mint 22.2 的 `VERSION_CODENAME` 是它自己的代号 `zara`，Tailscale 和 Docker 的 apt 源里都没有
-这个发行版；`ansible_lsb.codename` 拿到的也是它。`harbor.yml` 和 `linux-local.yml` 开头都会从
-`/etc/os-release` 读 `UBUNTU_CODENAME`（`noble`）再去拼源地址，并断言它非空。
+- **Mint 22.2**：apt 源必须用 `/etc/os-release` 里的 `UBUNTU_CODENAME`（`noble`）。
+  它自己的 `VERSION_CODENAME` 是 `zara`，Tailscale／Docker 的源里都没有这个发行版。
+  `harbor.yml` 一开始就读出来并 assert 非空。
+- **`include_tasks` 会吃掉细粒度标签**：动态 include 的子任务标签匹配不到，
+  `--tags gh` 会静默地什么也不装。`fleet/` 下的 playbook 统一用 `import_tasks`。
+- **端口绑定到 `0.0.0.0`**：这是有意的（家庭局域网），不是疏漏 —— 见 `SETUP.md` 里
+  的说明和端口列表。
+- **fish 里的空变量**：不加引号的话会直接消失，不是变成空字符串。
+  `--password $X`（X 为空）实际传给命令的是 `--password --next-flag`，报的错是
+  "missing value for --password" 而不是什么"变量未定义"。`SETUP.md` 里所有密码变量
+  都加了引号 + 空值检查。
