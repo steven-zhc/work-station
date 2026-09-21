@@ -17,7 +17,7 @@ foundry 上的开发任务由 **lingtai** 平台负责（不再使用 loop.sh）
 | # | 机器 | 内容 | 预计 |
 | --- | --- | --- | --- |
 | 1 | 三台 | 主机名 + Tailscale + 互相 SSH | 30 分钟 |
-| 2 | harbor | 合盖不休眠 + 目录 + `TS_IP` | 10 分钟 |
+| 2 | harbor | 合盖不休眠 + 目录 | 10 分钟 |
 | 3 | harbor | 基础服务栈：Postgres / n8n / Uptime Kuma / Dozzle | 20 分钟 |
 | 4 | foundry | 电源与散热 | 10 分钟 |
 | 5 | harbor + studio | restic 备份 + 恢复演练 | 30 分钟 |
@@ -112,19 +112,7 @@ sudo chown "$USER:$USER" /srv/stacks /srv/data /srv/backup    # 只改顶层
 
 > **不要 `chown -R /srv/data`**。后面 `/srv/data/postgres` 会属于容器里的 postgres 用户，递归改属主之后 Postgres 起不来（`data directory has wrong ownership`）。以后任何时候都别对它递归 chown。
 
-### 2.3 Tailscale IP
-
-所有服务的端口都只绑这个 IP：
-
-```bash
-# [harbor]
-echo "TS_IP=$(tailscale ip -4)" > /srv/stacks/.env.shared
-cat /srv/stacks/.env.shared       # 应该是 TS_IP=100.x.x.x
-```
-
-Tailscale 重新认证后 IP 可能变。变了就重跑这一行，再按 3.4 重新生成 `.env`。
-
-**完成标准**：合盖不休眠；`/srv/stacks/.env.shared` 里有 `100.x.x.x`。
+**完成标准**：合上盖子 2 分钟后仍能 `ssh harbor`；`/srv/{stacks,data,backup}` 已建好。
 
 ---
 
@@ -137,7 +125,9 @@ Tailscale 重新认证后 IP 可能变。变了就重跑这一行，再按 3.4 �
 | Uptime Kuma | `http://harbor:3001` | 存活监控 + 推送告警 |
 | Dozzle | `http://harbor:8080` | 容器日志 |
 
-全部只在 tailnet 内可见，公网零暴露。tailnet 内流量本身是 WireGuard 加密的，所以先用 http。
+端口绑在 `0.0.0.0`：家里局域网和 tailnet 都能访问。公网访问不到 —— 前提是路由器上**没有做端口转发、UPnP 关着**。
+
+注意两条路不一样：走 tailnet（`http://harbor:3001`）流量是 WireGuard 加密的；走局域网 IP 是 http 明文。
 
 ### 3.1 compose 文件
 
@@ -156,7 +146,7 @@ services:
       POSTGRES_PASSWORD: ${PG_PASSWORD}
       POSTGRES_DB: ${PG_DB}
     ports:
-      - "${TS_IP:?TS_IP 未设置}:5432:5432"
+      - "5432:5432"
     volumes:
       - /srv/data/postgres:/var/lib/postgresql/data
     healthcheck:
@@ -177,7 +167,7 @@ services:
       GENERIC_TIMEZONE: America/Chicago
       N8N_SECURE_COOKIE: "false"
     ports:
-      - "${TS_IP:?TS_IP 未设置}:5678:5678"
+      - "5678:5678"
     volumes:
       - /srv/data/n8n:/home/node/.n8n
     logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
@@ -186,7 +176,7 @@ services:
     image: louislam/uptime-kuma:1
     restart: unless-stopped
     ports:
-      - "${TS_IP:?TS_IP 未设置}:3001:3001"
+      - "3001:3001"
     volumes:
       - /srv/data/uptime-kuma:/app/data
 
@@ -196,7 +186,7 @@ services:
     environment:
       DOZZLE_AUTH_PROVIDER: simple
     ports:
-      - "${TS_IP:?TS_IP 未设置}:8080:8080"
+      - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /srv/data/dozzle:/data
@@ -205,7 +195,7 @@ EOF
 
 这个文件里有三处是故意的：
 
-- **`${TS_IP:?...}` 而不是 `${TS_IP}`**。变量为空时 Docker 会把 `""` 当成「所有接口」，服务静默地绑到 `0.0.0.0`、暴露在整个局域网上。`:?` 让它直接报错退出，fail closed。Docker 还会绕过 UFW 自己插 iptables 规则，所以不能指望防火墙兜底。
+- **端口绑 `0.0.0.0`**。局域网和 tailnet 都能访问。以后想收紧某个服务，只能改这里的绑定（比如写成 `"<Tailscale IP>:5432:5432"` 只让 tailnet 访问）—— Docker 会绕过 UFW 自己插 iptables 规则，`ufw deny` 挡不住。
 - **`N8N_SECURE_COOKIE: "false"`**。走 http 时不关掉这个，n8n 登录不进去。
 - **Dozzle 开认证**。它挂着 `docker.sock`，能读所有容器的日志 —— 包括 Postgres 启动时打印的密码。
 
@@ -219,14 +209,14 @@ sudo chown 1000:1000 /srv/data/n8n     # n8n 容器以 uid 1000 运行，属主�
 
 ### 3.3 密码
 
-密码放在 `.env.secret`，只生成一次。`umask 077` 保证文件从创建那一刻就是 600，而不是先 644 再 chmod：
+密码放在 `.env`（compose 会自动读它），只生成一次。`umask 077` 保证文件从创建那一刻就是 600，而不是先 644 再 chmod：
 
 ```bash
 # [harbor]
 cd /srv/stacks/base
 PG_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=')"
 ( umask 077
-  printf 'PG_USER=nextloom\nPG_PASSWORD=%s\nPG_DB=nextloom_dev\n' "$PG_PASSWORD" > .env.secret )
+  printf 'PG_USER=nextloom\nPG_PASSWORD=%s\nPG_DB=nextloom_dev\n' "$PG_PASSWORD" > .env )
 unset PG_PASSWORD
 
 # Dozzle 账号：用 Dozzle 自己的生成器，哈希格式由它决定
@@ -243,35 +233,33 @@ unset DZ_PASSWORD
 
 ```bash
 # [studio]  在 work-station 仓库根目录
-ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env.secret | cut -d= -f2-" \
+ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
   | tr -d '\n' | ./script/mysec.mjs postgres harbor-dev PG_PASSWORD -
 
 (echo -n '<上面打印的 Dozzle 密码>') | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
 ```
 
-### 3.4 生成 `.env` 并启动
-
-`.env` 是派生文件 = 共享变量 + 密码。每次 `TS_IP` 变了就重新拼一次：
+### 3.4 启动
 
 ```bash
 # [harbor]
 cd /srv/stacks/base
-( umask 077; cat /srv/stacks/.env.shared .env.secret > .env )
-docker compose config >/dev/null && echo "compose 配置 OK"    # TS_IP 为空会在这里就报错
+docker compose config >/dev/null && echo "compose 配置 OK"
 docker compose up -d
 docker compose ps
 ```
 
-### 3.5 验证端口没有泄漏到局域网
-
-这一步不要跳过：
+### 3.5 验证服务在监听
 
 ```bash
 # [harbor]
-ss -tlnH | grep -E ':(5432|5678|3001|8080)\b'
+ss -tlnH | grep -E ':(5432|5678|3001|8080)\b'     # 应该都是 0.0.0.0:端口
+ip -4 addr show | grep 'inet 192.168'                # harbor 的局域网 IP
 ```
 
-每一行的地址都必须是 `100.x.x.x:端口`。看到 `0.0.0.0` 或 `*` 就说明 `TS_IP` 没生效，先 `docker compose down`，查 `.env`。
+局域网里的设备用 `http://<harbor 局域网 IP>:3001` 访问。IP 最好在路由器里给 harbor 做一个 **DHCP 固定分配**，不然哪天变了书签就失效了。
+
+顺手确认路由器上**没有**把这几个端口转发到公网、UPnP 是关的。
 
 从 studio 访问：
 
@@ -299,7 +287,7 @@ postgresql://nextloom:<密码>@harbor:5432/nextloom_dev
 ./script/rw-mysec.mjs postgres:harbor-dev:PG_PASSWORD -- pnpm dev    # 换成你要跑的命令
 ```
 
-**完成标准**：四个服务 `docker compose ps` 都是 running；`ss` 里没有 `0.0.0.0`；studio 和手机都能打开 Uptime Kuma。
+**完成标准**：四个服务 `docker compose ps` 都是 running；局域网和 tailnet 都能打开 Uptime Kuma；路由器没有做端口转发。
 
 ---
 
@@ -555,7 +543,7 @@ curl -sI http://harbor:3001 | head -1
 
 # [harbor]
 docker compose -f /srv/stacks/base/compose.yaml ps
-ss -tlnH | grep -E ':(5432|5678|3001|8080)\b'          # 全是 100.x.x.x
+ss -tlnH | grep -E ':(5432|5678|3001|8080)\b'          # 都是 0.0.0.0:端口
 systemctl list-timers fleet-backup.timer
 stat -c '%U %a %n' /usr/local/lib/fleet/*.sh /etc/fleet/restic.env   # 都是 root，755 / 600
 
@@ -570,6 +558,5 @@ pmset -g custom | grep -A3 'AC Power'
 | 看服务状态 | `[harbor]` `docker compose -f /srv/stacks/base/compose.yaml ps` |
 | 看日志 | 浏览器 `http://harbor:8080` |
 | 重启某个服务 | `[harbor]` `cd /srv/stacks/base && docker compose restart n8n` |
-| Tailscale 换了 IP | `[harbor]` 重跑 2.3，再按 3.4 重拼 `.env` 并 `docker compose up -d` |
 | 手动备份一次 | `[harbor]` `sudo systemctl start fleet-backup.service` · `[studio]` `~/bin/backup-studio.sh` |
 | 看备份日志 | `[harbor]` `journalctl -u fleet-backup -n 50` · `[studio]` `tail ~/Library/Logs/fleet/backup.err.log` |
