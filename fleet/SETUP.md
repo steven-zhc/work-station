@@ -177,7 +177,7 @@ services:
     logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
 
   uptime-kuma:
-    image: louislam/uptime-kuma:1
+    image: louislam/uptime-kuma:2
     restart: unless-stopped
     ports:
       - "3001:3001"
@@ -276,7 +276,7 @@ curl -sI http://harbor:5678 | head -1      # n8n
 nc -z -G 3 harbor 5432 && echo "Postgres 端口通"
 ```
 
-然后浏览器打开 `http://harbor:3001`，建管理员账号；在 Settings → Notifications 里配一个推送渠道（Telegram / Bark / ntfy 任选），后面备份失败和服务掉线都靠它通知你。
+然后浏览器打开 `http://harbor:3001`。Uptime Kuma 2 首次启动会先让你选数据库：选 **SQLite** 就行（数据就在 `/srv/data/uptime-kuma` 里，跟着第 5 节的备份走）；接着建管理员账号，在 Settings → Notifications 里配一个推送渠道（Telegram / Bark / ntfy 任选），后面备份失败和服务掉线都靠它通知你。
 
 ### 3.6 studio 改用 harbor 上的数据库
 
