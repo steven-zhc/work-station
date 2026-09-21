@@ -12,6 +12,10 @@ foundry 上的开发任务由 **lingtai** 平台负责（不再使用 loop.sh）
 
 - `[studio]` Mac mini M4 · `[foundry]` MacBook Pro 15 (Intel) · `[harbor]` ThinkPad T450 / Mint 22.2 · `[后台]` 浏览器
 
+**所有命令都是 fish 语法** —— 三台的默认 shell 都被 ansible 设成了 fish。写进文件里的那几个脚本（`pg-dump.sh`、`daily.sh`、`backup-studio.sh`）本身仍然是 bash：它们靠第一行的 `#!/usr/bin/env bash` 执行，跟你在什么 shell 里敲命令无关。
+
+几个和 bash 不同、这份文档里会用到的地方：`set 变量 值` 是赋值，`set -e 变量` 是**删除**变量（不是 bash 的 `set -e`），`(命令)` 是命令替换，循环以 `end` 结尾。
+
 顺序是有意义的 —— 后一步依赖前一步：
 
 | # | 机器 | 内容 | 预计 |
@@ -30,7 +34,7 @@ foundry 上的开发任务由 **lingtai** 平台负责（不再使用 loop.sh）
 
 ### 1.1 主机名
 
-```bash
+```fish
 # [studio]（foundry 同理，把 studio 换成 foundry）
 sudo scutil --set HostName studio
 sudo scutil --set LocalHostName studio
@@ -42,7 +46,7 @@ sudo hostnamectl set-hostname harbor
 
 ### 1.2 登录 Tailscale
 
-```bash
+```fish
 # [studio] [foundry]
 open -a Tailscale        # 登录同一账号；偏好设置里勾上 Run on login（foundry 必须勾）
 
@@ -60,19 +64,19 @@ sudo tailscale up --hostname=harbor --ssh
 
 之后每台机器就是一个名字：`harbor`、`foundry`、`studio`。注意 MagicDNS **一个节点只有一个名字** —— `admin.harbor.xxx.ts.net` 这种二级域名不会解析，多个服务靠端口区分（见第 3 节）。
 
+顺手在 **Machines** 页面对 harbor 和 foundry 点 **Disable key expiry**，不然 180 天后节点密钥过期，机器会突然掉线。
+
 ### 1.4 能从 studio SSH 到另外两台
 
-```bash
-# [foundry] macOS 上 Tailscale SSH 服务端不可用（GUI 版不支持），用系统自带的：
-#   系统设置 → 通用 → 共享 → 远程登录：打开，只允许你自己的账号
-```
+`[foundry]` macOS 上 Tailscale 的 GUI 版不能当 SSH 服务端，用系统自带的：**系统设置 → 通用 → 共享 → 远程登录**，打开，只允许你自己的账号。
 
 `[studio]` 验证：
 
-```bash
-for h in harbor foundry; do
-  printf '== %s: ' "$h"; ssh -o ConnectTimeout=5 "$h" hostname
-done
+```fish
+for h in harbor foundry
+    printf '== %s: ' $h
+    ssh -o ConnectTimeout=5 $h hostname
+end
 ```
 
 **手机断开 Wi-Fi、只用蜂窝网络**，确认也能访问 `harbor` —— 这一步通了，出门在外也就通了。
@@ -87,12 +91,13 @@ done
 
 两处都要改，只改 logind 的话 Cinnamon 桌面会照样让它睡：
 
-```bash
+```fish
 # [harbor]
-for k in HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked; do
-  sudo sed -i "s/^#\?${k}=.*/${k}=ignore/" /etc/systemd/logind.conf
-  grep -q "^${k}=" /etc/systemd/logind.conf || echo "${k}=ignore" | sudo tee -a /etc/systemd/logind.conf >/dev/null
-done
+for k in HandleLidSwitch HandleLidSwitchExternalPower HandleLidSwitchDocked
+    sudo sed -i "s/^#\?$k=.*/$k=ignore/" /etc/systemd/logind.conf
+    grep -q "^$k=" /etc/systemd/logind.conf
+    or echo "$k=ignore" | sudo tee -a /etc/systemd/logind.conf >/dev/null
+end
 sudo systemctl restart systemd-logind
 
 gsettings set org.cinnamon.settings-daemon.plugins.power lid-close-ac-action 'nothing'
@@ -104,10 +109,10 @@ gsettings set org.cinnamon.settings-daemon.plugins.power sleep-inactive-ac-type 
 
 ### 2.2 目录
 
-```bash
+```fish
 # [harbor]
 sudo mkdir -p /srv/stacks /srv/data /srv/backup
-sudo chown "$USER:$USER" /srv/stacks /srv/data /srv/backup    # 只改顶层
+sudo chown $USER:$USER /srv/stacks /srv/data /srv/backup    # 只改顶层
 ```
 
 > **不要 `chown -R /srv/data`**。后面 `/srv/data/postgres` 会属于容器里的 postgres 用户，递归改属主之后 Postgres 起不来（`data directory has wrong ownership`）。以后任何时候都别对它递归 chown。
@@ -131,11 +136,10 @@ sudo chown "$USER:$USER" /srv/stacks /srv/data /srv/backup    # 只改顶层
 
 ### 3.1 compose 文件
 
-```bash
+```fish
 # [harbor]
 mkdir -p /srv/stacks/base && cd /srv/stacks/base
-cat > compose.yaml <<'EOF'
-name: base
+echo 'name: base
 
 services:
   postgres:
@@ -189,9 +193,10 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /srv/data/dozzle:/data
-EOF
+      - /srv/data/dozzle:/data' > compose.yaml
 ```
+
+fish 的单引号里 `$` 不展开，所以 `${PG_USER}` 会原样写进文件，由 compose 从 `.env` 里读。
 
 这个文件里有三处是故意的：
 
@@ -201,7 +206,7 @@ EOF
 
 ### 3.2 数据目录
 
-```bash
+```fish
 # [harbor]
 mkdir -p /srv/data/{postgres,n8n,uptime-kuma,dozzle}
 sudo chown 1000:1000 /srv/data/n8n     # n8n 容器以 uid 1000 运行，属主不对会 EACCES
@@ -209,39 +214,39 @@ sudo chown 1000:1000 /srv/data/n8n     # n8n 容器以 uid 1000 运行，属主�
 
 ### 3.3 密码
 
-密码放在 `.env`（compose 会自动读它），只生成一次。`umask 077` 保证文件从创建那一刻就是 600，而不是先 644 再 chmod：
+密码放在 `.env`（compose 会自动读它），只生成一次。先 `touch` + `chmod 600` 建好空文件再写内容，这样密码写进去的那一刻文件就已经只有你能读：
 
-```bash
+```fish
 # [harbor]
 cd /srv/stacks/base
-PG_PASSWORD="$(openssl rand -base64 24 | tr -d '/+=')"
-( umask 077
-  printf 'PG_USER=nextloom\nPG_PASSWORD=%s\nPG_DB=nextloom_dev\n' "$PG_PASSWORD" > .env )
-unset PG_PASSWORD
+set PG_PASSWORD (openssl rand -base64 24 | tr -d '/+=')
+touch .env && chmod 600 .env
+printf 'PG_USER=nextloom\nPG_PASSWORD=%s\nPG_DB=nextloom_dev\n' $PG_PASSWORD > .env
+set -e PG_PASSWORD
 
 # Dozzle 账号：用 Dozzle 自己的生成器，哈希格式由它决定
-DZ_PASSWORD="$(openssl rand -base64 18 | tr -d '/+=')"
+set DZ_PASSWORD (openssl rand -base64 18 | tr -d '/+=')
 echo "Dozzle 密码：$DZ_PASSWORD"          # 记下来，下一步存进 Keychain
-( umask 077
-  docker run --rm amir20/dozzle:latest generate admin \
-    --password "$DZ_PASSWORD" --name admin --email admin@harbor.local \
-    > /srv/data/dozzle/users.yml )
-unset DZ_PASSWORD
+touch /srv/data/dozzle/users.yml && chmod 600 /srv/data/dozzle/users.yml
+docker run --rm amir20/dozzle:latest generate admin \
+    --password $DZ_PASSWORD --name admin --email admin@harbor.local \
+    > /srv/data/dozzle/users.yml
+set -e DZ_PASSWORD
 ```
 
 存进 studio 的 Keychain。Postgres 密码直接从 harbor 管道过来，不经过屏幕：
 
-```bash
+```fish
 # [studio]  在 work-station 仓库根目录
 ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
-  | tr -d '\n' | ./script/mysec.mjs postgres harbor-dev PG_PASSWORD -
+    | tr -d '\n' | ./script/mysec.mjs postgres harbor-dev PG_PASSWORD -
 
-(echo -n '<上面打印的 Dozzle 密码>') | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
+echo -n '<上面打印的 Dozzle 密码>' | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
 ```
 
 ### 3.4 启动
 
-```bash
+```fish
 # [harbor]
 cd /srv/stacks/base
 docker compose config >/dev/null && echo "compose 配置 OK"
@@ -251,7 +256,7 @@ docker compose ps
 
 ### 3.5 验证服务在监听
 
-```bash
+```fish
 # [harbor]
 ss -tlnH | grep -E ':(5432|5678|3001|8080)\b'     # 应该都是 0.0.0.0:端口
 ip -4 addr show | grep 'inet 192.168'                # harbor 的局域网 IP
@@ -263,7 +268,7 @@ ip -4 addr show | grep 'inet 192.168'                # harbor 的局域网 IP
 
 从 studio 访问：
 
-```bash
+```fish
 # [studio]
 curl -sI http://harbor:3001 | head -1      # Uptime Kuma
 curl -sI http://harbor:8080 | head -1      # Dozzle（会跳登录页）
@@ -283,7 +288,7 @@ postgresql://nextloom:<密码>@harbor:5432/nextloom_dev
 
 需要注入到命令里时：
 
-```bash
+```fish
 ./script/rw-mysec.mjs postgres:harbor-dev:PG_PASSWORD -- pnpm dev    # 换成你要跑的命令
 ```
 
@@ -295,7 +300,7 @@ postgresql://nextloom:<密码>@harbor:5432/nextloom_dev
 
 lingtai 跑在这台上，所以它要长期插电、不休眠、不过热。三件事：
 
-```bash
+```fish
 # [foundry] 接电源时永不休眠（屏幕 10 分钟后熄灭）
 sudo pmset -c sleep 0 disksleep 0 displaysleep 10 womp 1
 pmset -g custom | sed -n '/AC Power/,/^$/p'      # sleep 应该是 0
@@ -308,7 +313,7 @@ pmset -g custom | sed -n '/AC Power/,/^$/p'      # sleep 应该是 0
 
 **散热**：开盖运行或垫高，别合盖塞抽屉。这台满载会重度降频。自查：
 
-```bash
+```fish
 sudo powermetrics --samplers smc -n 1 | grep -i temp    # 持续 95°C 以上就是在降频
 ```
 
@@ -333,42 +338,39 @@ foundry 不在这里备份：lingtai 的状态怎么保存、要不要备份，�
 
 **密码文件**只给 root 读：
 
-```bash
+```fish
 # [harbor]
-RESTIC_PW="$(openssl rand -base64 24 | tr -d '/+=')"
+set RESTIC_PW (openssl rand -base64 24 | tr -d '/+=')
 echo "harbor restic 密码：$RESTIC_PW"      # 立刻存进 Keychain，丢了备份就永远打不开
-printf 'RESTIC_REPOSITORY=/srv/backup/harbor\nRESTIC_PASSWORD=%s\n' "$RESTIC_PW" \
-  | sudo install -D -m 600 -o root -g root /dev/stdin /etc/fleet/restic.env
-unset RESTIC_PW
+printf 'RESTIC_REPOSITORY=/srv/backup/harbor\nRESTIC_PASSWORD=%s\n' $RESTIC_PW \
+    | sudo install -D -m 600 -o root -g root /dev/stdin /etc/fleet/restic.env
+set -e RESTIC_PW
 
 sudo mkdir -p /srv/backup/harbor
 sudo sh -c 'set -a; . /etc/fleet/restic.env; set +a; restic init'
 ```
 
-```bash
+```fish
 # [studio]
-(echo -n '<harbor restic 密码>') | ./script/mysec.mjs restic harbor RESTIC_PASSWORD -
+echo -n '<harbor restic 密码>' | ./script/mysec.mjs restic harbor RESTIC_PASSWORD -
 ```
 
-**备份脚本放在 root 拥有的目录**：
+**备份脚本放在 root 拥有的目录**。脚本内容是 bash，只是用 fish 把它写进文件：
 
-```bash
+```fish
 # [harbor]
 sudo install -d -m 755 -o root -g root /usr/local/lib/fleet
 
-sudo tee /usr/local/lib/fleet/pg-dump.sh >/dev/null <<'EOF'
-#!/usr/bin/env bash
+echo '#!/usr/bin/env bash
 set -euo pipefail
 set -a; . /srv/stacks/base/.env; set +a
 OUT=/srv/backup/pg
 mkdir -p "$OUT"
 cid="$(docker compose -f /srv/stacks/base/compose.yaml ps -q postgres)"
 docker exec "$cid" pg_dump -U "$PG_USER" -d "$PG_DB" | gzip > "$OUT/${PG_DB}-$(date +%F).sql.gz"
-find "$OUT" -name '*.sql.gz' -mtime +7 -delete
-EOF
+find "$OUT" -name "*.sql.gz" -mtime +7 -delete' | sudo tee /usr/local/lib/fleet/pg-dump.sh >/dev/null
 
-sudo tee /usr/local/lib/fleet/daily.sh >/dev/null <<'EOF'
-#!/usr/bin/env bash
+echo '#!/usr/bin/env bash
 set -euo pipefail
 set -a; . /etc/fleet/restic.env; set +a
 
@@ -379,33 +381,29 @@ set -a; . /etc/fleet/restic.env; set +a
 restic backup /srv/data /srv/backup/pg /srv/stacks \
   --exclude /srv/data/postgres \
   --exclude /srv/backup/studio \
-  --exclude '**/*.sock'
+  --exclude "**/*.sock"
 
-restic forget --keep-daily 30 --keep-weekly 12 --keep-monthly 6 --prune
-EOF
+restic forget --keep-daily 30 --keep-weekly 12 --keep-monthly 6 --prune' | sudo tee /usr/local/lib/fleet/daily.sh >/dev/null
 
-sudo chmod 755 /usr/local/lib/fleet/*.sh
-sudo chown root:root /usr/local/lib/fleet/*.sh
+sudo chmod 755 /usr/local/lib/fleet/pg-dump.sh /usr/local/lib/fleet/daily.sh
+sudo chown root:root /usr/local/lib/fleet/pg-dump.sh /usr/local/lib/fleet/daily.sh
 ```
 
 > **为什么不能放在 `/srv/backup/` 下**：那个目录属于你的普通用户，而下面的定时器以 root 身份执行这些脚本。任何以你的用户身份运行的东西，都能往脚本里追加一行，然后在凌晨 3:30 以 root 身份执行。
 
 **定时器**：
 
-```bash
+```fish
 # [harbor]
-sudo tee /etc/systemd/system/fleet-backup.service >/dev/null <<'EOF'
-[Unit]
+echo '[Unit]
 Description=Fleet daily backup
 
 [Service]
 Type=oneshot
 ExecStart=/usr/local/lib/fleet/daily.sh
-NoNewPrivileges=true
-EOF
+NoNewPrivileges=true' | sudo tee /etc/systemd/system/fleet-backup.service >/dev/null
 
-sudo tee /etc/systemd/system/fleet-backup.timer >/dev/null <<'EOF'
-[Unit]
+echo '[Unit]
 Description=Fleet daily backup timer
 
 [Timer]
@@ -413,8 +411,7 @@ OnCalendar=*-*-* 03:30:00
 Persistent=true
 
 [Install]
-WantedBy=timers.target
-EOF
+WantedBy=timers.target' | sudo tee /etc/systemd/system/fleet-backup.timer >/dev/null
 
 sudo systemctl daemon-reload
 sudo systemctl enable --now fleet-backup.timer
@@ -425,7 +422,7 @@ systemctl list-timers fleet-backup.timer
 
 没验证过的备份等于没有备份。仓库是 root 的，演练也用 root：
 
-```bash
+```fish
 # [harbor]
 sudo systemctl start fleet-backup.service
 journalctl -u fleet-backup.service -n 30 --no-pager
@@ -445,32 +442,32 @@ ls -la /srv/backup/pg/        # 应该有今天的 .sql.gz
 
 给 studio 的仓库一个你自己能写的目录：
 
-```bash
+```fish
 # [harbor]
 mkdir -p /srv/backup/studio
 ```
 
 studio 这边用它自己的密码：
 
-```bash
+```fish
 # [studio]
-( umask 077; openssl rand -base64 24 | tr -d '/+=\n' > ~/.restic-pass )
+touch ~/.restic-pass && chmod 600 ~/.restic-pass
+openssl rand -base64 24 | tr -d '/+=\n' > ~/.restic-pass
 cat ~/.restic-pass | ./script/mysec.mjs restic studio RESTIC_PASSWORD -
 
 # 记录 harbor 的主机密钥 —— launchd 是非交互的，没有这一步每晚都会死在
 # "Host key verification failed"
 ssh -o StrictHostKeyChecking=accept-new harbor true
 
-export RESTIC_PASSWORD_FILE=~/.restic-pass
+set -x RESTIC_PASSWORD_FILE ~/.restic-pass
 restic -r sftp:harbor:/srv/backup/studio init
 ```
 
 `~/.restic-excludes`：
 
-```bash
+```fish
 # [studio]
-cat > ~/.restic-excludes <<'EOF'
-node_modules
+echo 'node_modules
 .next
 dist
 build
@@ -480,51 +477,47 @@ out
 target
 .cache
 *.log
-.DS_Store
-EOF
+.DS_Store' > ~/.restic-excludes
 ```
 
-备份脚本：
+备份脚本（内容是 bash）：
 
-```bash
+```fish
 # [studio]
 mkdir -p ~/bin ~/Library/Logs/fleet
-cat > ~/bin/backup-studio.sh <<'EOF'
-#!/usr/bin/env bash
+echo '#!/usr/bin/env bash
 set -euo pipefail
 export RESTIC_PASSWORD_FILE="$HOME/.restic-pass"
 REPO="sftp:harbor:/srv/backup/studio"
 
 restic -r "$REPO" backup "$HOME/workspace" --exclude-file "$HOME/.restic-excludes" --tag studio
 restic -r "$REPO" forget --tag studio --keep-daily 30 --keep-weekly 12 --prune
-echo "$(date '+%F %T') ok"
-EOF
+echo "$(date "+%F %T") ok"' > ~/bin/backup-studio.sh
 chmod +x ~/bin/backup-studio.sh
 ~/bin/backup-studio.sh          # 先手动跑一次
 ```
 
-每天 02:30 自动跑（和 harbor 的 03:30 错开，两边 prune 不抢锁）：
+每天 02:30 自动跑（和 harbor 的 03:30 错开，两边 prune 不抢锁）。plist 里要填你的 home 路径，先写 `__HOME__` 占位，再用 `string replace` 换掉：
 
-```bash
+```fish
 # [studio]
-cat > ~/Library/LaunchAgents/ai.nextloom.backup-studio.plist <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
+echo '<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
   <key>Label</key><string>ai.nextloom.backup-studio</string>
-  <key>ProgramArguments</key><array><string>$HOME/bin/backup-studio.sh</string></array>
+  <key>ProgramArguments</key><array><string>__HOME__/bin/backup-studio.sh</string></array>
   <key>StartCalendarInterval</key>
   <dict><key>Hour</key><integer>2</integer><key>Minute</key><integer>30</integer></dict>
-  <key>StandardOutPath</key><string>$HOME/Library/Logs/fleet/backup.out.log</string>
-  <key>StandardErrorPath</key><string>$HOME/Library/Logs/fleet/backup.err.log</string>
+  <key>StandardOutPath</key><string>__HOME__/Library/Logs/fleet/backup.out.log</string>
+  <key>StandardErrorPath</key><string>__HOME__/Library/Logs/fleet/backup.err.log</string>
   <key>EnvironmentVariables</key>
   <dict><key>PATH</key><string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string></dict>
 </dict>
-</plist>
-EOF
-launchctl bootstrap "gui/$(id -u)" ~/Library/LaunchAgents/ai.nextloom.backup-studio.plist
-launchctl print "gui/$(id -u)/ai.nextloom.backup-studio" | head -5
+</plist>' | string replace -a __HOME__ $HOME > ~/Library/LaunchAgents/ai.nextloom.backup-studio.plist
+
+launchctl bootstrap gui/(id -u) ~/Library/LaunchAgents/ai.nextloom.backup-studio.plist
+launchctl print gui/(id -u)/ai.nextloom.backup-studio | head -5
 ```
 
 **完成标准**：harbor 的定时器在排队、恢复演练通过、`/srv/backup/pg` 有今天的 dump；studio 手动跑过一次成功、launchd 任务已注册；三个 restic 密码都在 Keychain 里。
@@ -533,10 +526,12 @@ launchctl print "gui/$(id -u)/ai.nextloom.backup-studio" | head -5
 
 ## 全部做完后的体检
 
-```bash
+```fish
 # [studio]
 tailscale status
-for h in harbor foundry; do ssh -o ConnectTimeout=5 "$h" hostname; done
+for h in harbor foundry
+    ssh -o ConnectTimeout=5 $h hostname
+end
 curl -sI http://harbor:3001 | head -1
 ./script/mysec.mjs restic harbor RESTIC_PASSWORD >/dev/null && echo "harbor restic 密码在 Keychain"
 ./script/mysec.mjs restic studio RESTIC_PASSWORD >/dev/null && echo "studio restic 密码在 Keychain"
@@ -545,7 +540,7 @@ curl -sI http://harbor:3001 | head -1
 docker compose -f /srv/stacks/base/compose.yaml ps
 ss -tlnH | grep -E ':(5432|5678|3001|8080)\b'          # 都是 0.0.0.0:端口
 systemctl list-timers fleet-backup.timer
-stat -c '%U %a %n' /usr/local/lib/fleet/*.sh /etc/fleet/restic.env   # 都是 root，755 / 600
+sudo stat -c '%U %a %n' /usr/local/lib/fleet/pg-dump.sh /usr/local/lib/fleet/daily.sh /etc/fleet/restic.env   # 都是 root，755 / 600
 
 # [foundry]
 pmset -g custom | grep -A3 'AC Power'
