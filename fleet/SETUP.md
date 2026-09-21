@@ -136,10 +136,11 @@ sudo chown $USER:$USER /srv/stacks /srv/data /srv/backup    # 只改顶层
 
 ### 3.1 compose 文件
 
-```fish
+```yaml
 # [harbor]
-mkdir -p /srv/stacks/base && cd /srv/stacks/base
-echo 'name: base
+# mkdir -p /srv/stacks/base && cd /srv/stacks/base
+# echo '
+name: base
 
 services:
   postgres:
@@ -193,7 +194,8 @@ services:
       - "8080:8080"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /srv/data/dozzle:/data' > compose.yaml
+      - /srv/data/dozzle:/data'
+# > compose.yaml
 ```
 
 fish 的单引号里 `$` 不展开，所以 `${PG_USER}` 会原样写进文件，由 compose 从 `.env` 里读。
@@ -240,15 +242,21 @@ set -e PG_PASSWORD
 
 # Dozzle 账号：用 Dozzle 自己的生成器，哈希格式由它决定
 set DZ_PASSWORD (openssl rand -base64 18 | tr -d '/+=')
-echo "Dozzle 密码：$DZ_PASSWORD"          # 记下来，下一步存进 Keychain
-# 先写到 .new，确认不是空文件再替换。docker run 失败的话（比如 docker context 不对），
-# 直接重定向会留下一个 0 字节的 users.yml，Dozzle 启动时报 EOF 然后一直重启。
-touch /srv/data/dozzle/users.yml.new && chmod 600 /srv/data/dozzle/users.yml.new
-docker run --rm amir20/dozzle:v11 generate admin --password $DZ_PASSWORD \
-    --name admin --email admin@harbor.local > /srv/data/dozzle/users.yml.new
-and test -s /srv/data/dozzle/users.yml.new
-and mv /srv/data/dozzle/users.yml.new /srv/data/dozzle/users.yml
-or echo "生成失败，先确认 docker ps 能用"
+# fish 里空变量不加引号会整个消失，--password 就吃到了下一个参数 → "missing value for --password"。
+# 所以：变量一律加引号，并且先确认它不是空的。
+if test -z "$DZ_PASSWORD"
+    echo "DZ_PASSWORD 是空的，重新执行上面的 set"
+else
+    echo "Dozzle 密码：$DZ_PASSWORD"      # 记下来，下一步存进 Keychain
+    # 先写到 .new，确认不是空文件再替换。docker run 失败的话（比如 docker context 不对），
+    # 直接重定向会留下一个 0 字节的 users.yml，Dozzle 启动时报 EOF 然后一直重启。
+    touch /srv/data/dozzle/users.yml.new; and chmod 600 /srv/data/dozzle/users.yml.new
+    docker run --rm amir20/dozzle:v11 generate --password "$DZ_PASSWORD" \
+        --name admin --email admin@harbor.local admin > /srv/data/dozzle/users.yml.new
+    and test -s /srv/data/dozzle/users.yml.new
+    and mv /srv/data/dozzle/users.yml.new /srv/data/dozzle/users.yml
+    or echo "生成失败，先确认 docker ps 能用"
+end
 set -e DZ_PASSWORD
 ```
 
