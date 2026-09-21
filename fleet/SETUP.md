@@ -143,7 +143,7 @@ echo 'name: base
 
 services:
   postgres:
-    image: postgres:16-alpine
+    image: postgres:18-alpine
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${PG_USER}
@@ -152,7 +152,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - /srv/data/postgres:/var/lib/postgresql/data
+      - /srv/data/postgres:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${PG_USER}"]
       interval: 30s
@@ -161,7 +161,7 @@ services:
     logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
 
   n8n:
-    image: docker.n8n.io/n8nio/n8n:latest
+    image: docker.n8n.io/n8nio/n8n:2.40.5
     restart: unless-stopped
     environment:
       N8N_HOST: harbor
@@ -185,7 +185,7 @@ services:
       - /srv/data/uptime-kuma:/app/data
 
   dozzle:
-    image: amir20/dozzle:latest
+    image: amir20/dozzle:v11
     restart: unless-stopped
     environment:
       DOZZLE_AUTH_PROVIDER: simple
@@ -203,6 +203,20 @@ fish 的单引号里 `$` 不展开，所以 `${PG_USER}` 会原样写进文件�
 - **端口绑 `0.0.0.0`**。局域网和 tailnet 都能访问。以后想收紧某个服务，只能改这里的绑定（比如写成 `"<Tailscale IP>:5432:5432"` 只让 tailnet 访问）—— Docker 会绕过 UFW 自己插 iptables 规则，`ufw deny` 挡不住。
 - **`N8N_SECURE_COOKIE: "false"`**。走 http 时不关掉这个，n8n 登录不进去。
 - **Dozzle 开认证**。它挂着 `docker.sock`，能读所有容器的日志 —— 包括 Postgres 启动时打印的密码。
+- **Postgres 18 的挂载点是 `/var/lib/postgresql`，不是 `/data`**。18 的官方镜像把数据目录改成了 `/var/lib/postgresql/18/docker`（按大版本分目录，为以后 `pg_upgrade` 铺路）。照老习惯挂到 `/var/lib/postgresql/data`，容器会直接拒绝启动。
+
+**版本**：都是写这份文档时（2026-09）的最新稳定版。
+
+| 服务 | tag | 说明 |
+| --- | --- | --- |
+| Postgres | `18-alpine` | 19 还在 beta。跟着 18.x 小版本自动更新；**大版本升级不能只改 tag**，要 dump/restore |
+| n8n | `2.40.5` | n8n 没有 `2` 这种大版本 tag。v3 已经在 rc，用 `latest` 的话哪天 pull 就会跳到 v3、带着破坏性改动，所以钉死具体版本，升级时手动改 |
+| Uptime Kuma | `2` | 跟着 2.x 自动更新 |
+| Dozzle | `v11` | 跟着 v11.x 自动更新 |
+
+升级：改 tag（n8n）或直接拉新（其余），然后 `docker compose pull && docker compose up -d`。
+
+n8n 2.x 默认**禁用了 Execute Command 节点**，Code 节点也跑在隔离的 task runner 里。考虑到服务开在局域网上，这正是我们想要的，别特意打开。
 
 ### 3.2 数据目录
 
@@ -228,7 +242,7 @@ set -e PG_PASSWORD
 set DZ_PASSWORD (openssl rand -base64 18 | tr -d '/+=')
 echo "Dozzle 密码：$DZ_PASSWORD"          # 记下来，下一步存进 Keychain
 touch /srv/data/dozzle/users.yml && chmod 600 /srv/data/dozzle/users.yml
-docker run --rm amir20/dozzle:latest generate admin \
+docker run --rm amir20/dozzle:v11 generate admin \
     --password $DZ_PASSWORD --name admin --email admin@harbor.local \
     > /srv/data/dozzle/users.yml
 set -e DZ_PASSWORD
@@ -243,6 +257,23 @@ ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
 
 echo -n '<上面打印的 Dozzle 密码>' | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
 ```
+
+**harbor 上已经用 Postgres 16 初始化过数据的话**，直接换成 18 起不来 —— 数据文件不跨大版本兼容。要先导出再导入：
+
+```fish
+# [harbor] 还在 16 的时候先导出
+cd /srv/stacks/base
+docker compose exec -T postgres pg_dumpall -U nextloom > ~/pg16-dump.sql
+docker compose down
+sudo mv /srv/data/postgres /srv/data/postgres-16-old      # 留着，确认 18 没问题再删
+mkdir -p /srv/data/postgres
+
+# 改好 compose.yaml（18-alpine + 新挂载点）后
+docker compose up -d postgres
+cat ~/pg16-dump.sql | docker compose exec -T postgres psql -U nextloom -d postgres
+```
+
+还没往 16 里放过数据的话，直接清空 `/srv/data/postgres` 再起就行。
 
 ### 3.4 启动
 
