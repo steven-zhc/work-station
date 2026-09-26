@@ -147,15 +147,14 @@ services:
     image: postgres:18-alpine
     restart: unless-stopped
     environment:
-      POSTGRES_USER: ${PG_USER}
-      POSTGRES_PASSWORD: ${PG_PASSWORD}
-      POSTGRES_DB: ${PG_DB}
+      POSTGRES_USER: ${PG_ADMIN_USER}
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
     ports:
       - "5432:5432"
     volumes:
       - /srv/data/postgres:/var/lib/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_USER}"]
+      test: ["CMD-SHELL", "pg_isready -U ${PG_ADMIN_USER}"]
       interval: 30s
       timeout: 5s
       retries: 5
@@ -198,7 +197,7 @@ services:
 # > compose.yaml
 ```
 
-fish 的单引号里 `$` 不展开，所以 `${PG_USER}` 会原样写进文件，由 compose 从 `.env` 里读。
+fish 的单引号里 `$` 不展开，所以 `${PG_ADMIN_USER}` 会原样写进文件，由 compose 从 `.env` 里读。`PG_ADMIN_USER` 只是集群管理员，不对应任何一个项目的库 —— 应用库在 3.5 节单独建。
 
 这个文件里有三处是故意的：
 
@@ -235,10 +234,10 @@ sudo chown 1000:1000 /srv/data/n8n     # n8n 容器以 uid 1000 运行，属主�
 ```fish
 # [harbor]
 cd /srv/stacks/base
-set PG_PASSWORD (openssl rand -base64 24 | tr -d '/+=')
+set PG_ADMIN_PASSWORD (openssl rand -base64 24 | tr -d '/+=')
 touch .env && chmod 600 .env
-printf 'PG_USER=nextloom\nPG_PASSWORD=%s\nPG_DB=nextloom_dev\n' $PG_PASSWORD > .env
-set -e PG_PASSWORD
+printf 'PG_ADMIN_USER=pgadmin\nPG_ADMIN_PASSWORD=%s\n' $PG_ADMIN_PASSWORD > .env
+set -e PG_ADMIN_PASSWORD
 
 # Dozzle 账号：用 Dozzle 自己的生成器，哈希格式由它决定
 set DZ_PASSWORD (openssl rand -base64 18 | tr -d '/+=')
@@ -263,12 +262,14 @@ end
 set -e DZ_PASSWORD
 ```
 
-存进 studio 的 Keychain。两个密码都直接从 harbor 的 `.env` 管道过来，不经过屏幕：
+存进 studio 的 Keychain。管理员账号密码和 Dozzle 密码都直接从 harbor 的 `.env` 管道过来，不经过屏幕：
 
 ```fish
 # [studio]  在 work-station 仓库根目录
-ssh harbor "grep '^PG_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
-    | tr -d '\n' | ./script/mysec.mjs postgres harbor-dev PG_PASSWORD -
+ssh harbor "grep '^PG_ADMIN_USER=' /srv/stacks/base/.env | cut -d= -f2-" \
+    | tr -d '\n' | ./script/mysec.mjs postgres harbor-admin PG_ADMIN_USER -
+ssh harbor "grep '^PG_ADMIN_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
+    | tr -d '\n' | ./script/mysec.mjs postgres harbor-admin PG_ADMIN_PASSWORD -
 
 ssh harbor "grep '^DZ_PASSWORD=' /srv/stacks/base/.env | cut -d= -f2-" \
     | tr -d '\n' | ./script/mysec.mjs dozzle harbor DOZZLE_PASSWORD -
@@ -284,7 +285,7 @@ sudo rm -rf /srv/data/postgres        # 永久删除旧数据
 mkdir /srv/data/postgres
 ```
 
-用户、密码、库名都来自 `.env`，重新初始化后和原来一样。
+管理员账号来自 `.env`，重新初始化后和原来一样；但应用库（3.5 节）是新卷里没有的，清空重来之后要重新跑一遍 3.5 节的建库步骤。
 
 ### 3.4 启动
 
@@ -296,7 +297,41 @@ docker compose up -d
 docker compose ps
 ```
 
-### 3.5 验证服务在监听
+### 3.5 建应用库
+
+一个 Postgres 实例装多个项目的库：每个项目一个角色 + 一个同名的库，角色只能连自己的
+库，互相看不见。库名可以带连字符（下面直接用项目名），只是 SQL 里引用时要加双引号。
+
+`newdb` 是个小 fish 函数，建一对角色 + 库、生成密码、存进 studio 的 Keychain：
+
+```fish
+# [harbor]
+cd /srv/stacks/base
+# fish 不认识 bash 的 KEY=VALUE 语法，不能直接 `source .env`，逐行拆成 fish 变量：
+for l in (cat .env)
+    set -gx (string split -m1 = $l)
+end
+set cid (docker compose ps -q postgres)
+
+function newdb --argument-names name
+    set pw (openssl rand -base64 24 | tr -d '/+=')
+    docker exec $cid psql -U $PG_ADMIN_USER -d postgres -v ON_ERROR_STOP=1 -c \
+        "CREATE ROLE \"$name\" LOGIN PASSWORD '$pw'; CREATE DATABASE \"$name\" OWNER \"$name\";"
+    echo -n "$pw" | ./script/mysec.mjs postgres "harbor-$name" PG_PASSWORD -
+    set -e pw
+end
+
+newdb nextloom-ai-dev
+newdb lingtai-my
+```
+
+这一步要在 studio 上跑（`ssh harbor` 也行，改成先 `ssh harbor` 再执行 `docker exec`
+那几行，`mysec.mjs` 那行留在 studio 端）—— 因为密码要直接进 Keychain，不经过屏幕。
+
+以后再加一个项目库，重复一次 `newdb <项目名>` 就行；`/srv/data/postgres` 被清空重建后
+（见上一节），这里也要重新跑一遍，角色和库不会跟着卷一起消失，是因为卷本来就没了。
+
+### 3.6 验证服务在监听
 
 ```fish
 # [harbor]
@@ -320,18 +355,20 @@ nc -z -G 3 harbor 5432 && echo "Postgres 端口通"
 
 然后浏览器打开 `http://harbor:3001`。Uptime Kuma 2 首次启动会先让你选数据库：选 **SQLite** 就行（数据就在 `/srv/data/uptime-kuma` 里，跟着第 5 节的备份走）；接着建管理员账号，在 Settings → Notifications 里配一个推送渠道（Telegram / Bark / ntfy 任选），后面备份失败和服务掉线都靠它通知你。
 
-### 3.6 studio 改用 harbor 上的数据库
+### 3.7 项目改用 harbor 上的数据库
 
-项目里的开发数据库连接串改成：
+每个项目连自己的库，用户名等于库名（3.5 节的 `newdb` 建的）：
 
 ```
-postgresql://nextloom:<密码>@harbor:5432/nextloom_dev
+postgresql://nextloom-ai-dev:<密码>@harbor:5432/nextloom-ai-dev
+postgresql://lingtai-my:<密码>@harbor:5432/lingtai-my
 ```
 
-需要注入到命令里时：
+需要注入到命令里时，account 换成对应项目：
 
 ```fish
-./script/rw-mysec.mjs postgres:harbor-dev:PG_PASSWORD -- pnpm dev    # 换成你要跑的命令
+./script/rw-mysec.mjs postgres:harbor-nextloom-ai-dev:PG_PASSWORD -- pnpm dev   # nextloom-ai 项目
+./script/rw-mysec.mjs postgres:harbor-lingtai-my:PG_PASSWORD -- pnpm dev       # lingtai 项目
 ```
 
 **完成标准**：四个服务 `docker compose ps` 都是 running；局域网和 tailnet 都能打开 Uptime Kuma；路由器没有做端口转发。
@@ -409,7 +446,13 @@ set -a; . /srv/stacks/base/.env; set +a
 OUT=/srv/backup/pg
 mkdir -p "$OUT"
 cid="$(docker compose -f /srv/stacks/base/compose.yaml ps -q postgres)"
-docker exec "$cid" pg_dump -U "$PG_USER" -d "$PG_DB" | gzip > "$OUT/${PG_DB}-$(date +%F).sql.gz"
+
+# 备份每一个应用库（3.5 节 newdb 建的），跳过 postgres 自带的库和管理员自己的默认库。
+# 新加一个库不用改这个脚本 —— 它跟着 pg_database 走。
+for db in $(docker exec "$cid" psql -U "$PG_ADMIN_USER" -d postgres -tAc \
+    "select datname from pg_database where datistemplate=false and datname not in (\'postgres\', \'$PG_ADMIN_USER\')"); do
+  docker exec "$cid" pg_dump -U "$PG_ADMIN_USER" -d "$db" | gzip > "$OUT/${db}-$(date +%F).sql.gz"
+done
 find "$OUT" -name "*.sql.gz" -mtime +7 -delete' | sudo tee /usr/local/lib/fleet/pg-dump.sh >/dev/null
 
 echo '#!/usr/bin/env bash
