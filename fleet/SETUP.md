@@ -272,7 +272,9 @@ docker compose ps
 一个 Postgres 实例装多个项目的库：每个项目一个角色 + 一个同名的库，角色只能连自己的
 库，互相看不见。库名可以带连字符（下面直接用项目名），只是 SQL 里引用时要加双引号。
 
-`newdb` 是个小 fish 函数，建一对角色 + 库、生成密码、存进 studio 的 Keychain：
+`newdb` 是个小 fish 函数，建一对角色 + 库、生成密码、打印出来。**密码先不进 Keychain**
+——这块以后有单独的方案，现在只是打印在屏幕上，自己记下来（比如先抄进对应项目的
+`.env`）：
 
 ```fish
 # [harbor]
@@ -287,7 +289,7 @@ function newdb --argument-names name
     set pw (openssl rand -base64 24 | tr -d '/+=')
     docker exec $cid psql -U $PG_ADMIN_USER -d postgres -v ON_ERROR_STOP=1 -c \
         "CREATE ROLE \"$name\" LOGIN PASSWORD '$pw'; CREATE DATABASE \"$name\" OWNER \"$name\";"
-    echo -n "$pw" | ./script/mysec.mjs postgres "harbor-$name" PG_PASSWORD -
+    echo "$name 密码：$pw"      # 记下来 —— 这一步不存 Keychain，也不写文件
     set -e pw
 end
 
@@ -295,8 +297,8 @@ newdb nextloom-ai-dev
 newdb lingtai-my
 ```
 
-这一步要在 studio 上跑（`ssh harbor` 也行，改成先 `ssh harbor` 再执行 `docker exec`
-那几行，`mysec.mjs` 那行留在 studio 端）—— 因为密码要直接进 Keychain，不经过屏幕。
+直接在 harbor 上跑就行，不用像 3.3 节那样非得在 studio 上执行 —— 密码只是打印，没有
+管道去 Keychain，所以哪台机器跑都一样。
 
 以后再加一个项目库，重复一次 `newdb <项目名>` 就行；`/srv/data/postgres` 被清空重建后
 （见上一节），这里也要重新跑一遍，角色和库不会跟着卷一起消失，是因为卷本来就没了。
@@ -334,12 +336,8 @@ postgresql://nextloom-ai-dev:<密码>@harbor:5432/nextloom-ai-dev
 postgresql://lingtai-my:<密码>@harbor:5432/lingtai-my
 ```
 
-需要注入到命令里时，account 换成对应项目：
-
-```fish
-./script/rw-mysec.mjs postgres:harbor-nextloom-ai-dev:PG_PASSWORD -- pnpm dev   # nextloom-ai 项目
-./script/rw-mysec.mjs postgres:harbor-lingtai-my:PG_PASSWORD -- pnpm dev       # lingtai 项目
-```
+密码是 3.5 节 `newdb` 打印出来的那个，还没进 Keychain，先按你自己的方式存（比如
+直接放进对应项目的 `.env`）—— 等有了密码管理方案再回来补 `rw-mysec.mjs` 这一步。
 
 **完成标准**：四个服务 `docker compose ps` 都是 running；局域网和 tailnet 都能打开 Uptime Kuma；路由器没有做端口转发。
 
