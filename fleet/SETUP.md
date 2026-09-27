@@ -155,6 +155,7 @@ git clone git@github.com:steven-zhc/work-station.git ~/workspace/work-station
 # [harbor]
 mkdir -p /srv/stacks/base
 ln -sf ~/workspace/work-station/fleet/stacks/base/compose.yaml /srv/stacks/base/compose.yaml
+ln -sf ~/workspace/work-station/fleet/stacks/base/newdb.sh /srv/stacks/base/newdb.sh
 ```
 
 **以后要更新**，在 harbor 上：
@@ -267,50 +268,53 @@ docker compose up -d
 docker compose ps
 ```
 
+**`POSTGRES_USER`/`POSTGRES_PASSWORD` 只在数据目录是空的时候生效**（只在 initdb 那一刻
+读一次）。如果 `/srv/data/postgres` 已经不是空的了（比如以前用旧版 `.env` 启动过一次），
+改 `.env` 再 `docker compose up -d` 不会报错，但也**不会**改掉集群里已有的管理员账号——
+容器照样正常起来，只是等你用 `.env` 里新写的 `PG_ADMIN_USER` 去连的时候才会看到
+`role "pgadmin" does not exist`。排查：
+
+```fish
+# [harbor]
+cat .env                                              # 确认现在 .env 里写的是什么
+docker exec (docker compose ps -q postgres) psql -U postgres -d postgres -c '\du'   # 列出集群里实际有哪些角色
+```
+
+如果第二条也失败（角色不是 `postgres`），说明是在更早、连 `POSTGRES_USER` 都没设的时候
+初始化的，默认角色就是 `postgres`。这台机器上是全新的开发库，不需要保留，直接清空重新
+初始化最省事（跟上一节的"清空 PG16 数据"是同一个操作）：
+
+```fish
+# [harbor]
+docker compose stop postgres; and docker compose rm -f postgres
+sudo rm -rf /srv/data/postgres
+mkdir /srv/data/postgres
+cat .env                        # 再确认一遍 PG_ADMIN_USER / PG_ADMIN_PASSWORD 是想要的值
+docker compose up -d postgres
+docker compose logs postgres --tail 20    # 看到 "database system is ready to accept connections" 就好了
+```
+
+这次 `/srv/data/postgres` 是空的，`.env` 里的 `PG_ADMIN_USER`/`PG_ADMIN_PASSWORD` 才会真
+的用上。
+
 ### 3.5 建应用库
 
 一个 Postgres 实例装多个项目的库：每个项目一个角色 + 一个同名的库，角色只能连自己的
 库，互相看不见。库名可以带连字符（下面直接用项目名），只是 SQL 里引用时要加双引号。
 
-`newdb` 是个小 fish 函数，建一对角色 + 库、生成密码、打印出来。**密码先不进 Keychain**
-——这块以后有单独的方案，现在只是打印在屏幕上，自己记下来（比如先抄进对应项目的
-`.env`）：
+`newdb.sh` 是仓库里的真脚本（`fleet/stacks/base/newdb.sh`），跟 `compose.yaml` 一样
+在 3.1 节符号链接到了 `/srv/stacks/base/newdb.sh`。普通 bash，不依赖任何 shell 会话
+状态（不用 fish 函数、不用 `funcsave`、不用提前 `set` 变量）——直接跑就行：
 
 ```fish
 # [harbor]
 cd /srv/stacks/base
-# fish 不认识 bash 的 KEY=VALUE 语法，不能直接 `source .env`，逐行拆成 fish 变量：
-for l in (cat .env)
-    set -gx (string split -m1 = $l)
-end
-set cid (docker compose ps -q postgres)
-
-function newdb --argument-names name
-    set pw (openssl rand -base64 24 | tr -d '/+=')
-    docker exec $cid psql -U $PG_ADMIN_USER -d postgres -v ON_ERROR_STOP=1 -c \
-        "CREATE ROLE \"$name\" LOGIN PASSWORD '$pw'; CREATE DATABASE \"$name\" OWNER \"$name\";"
-    echo "$name 密码：$pw"      # 记下来 —— 这一步不存 Keychain，也不写文件
-    set -e pw
-end
-funcsave newdb      # 不然这个函数只活在当前这个 shell 里，下次开个新终端就 "command not found"
-
-newdb nextloom-ai-dev
-newdb lingtai-my
+./newdb.sh nextloom-ai-dev lingtai-my
 ```
 
-`funcsave` 把函数写进 `~/.config/fish/functions/newdb.fish`，fish 以后每次启动都会自动
-加载，不用再重新粘贴一遍函数定义 —— 只有 `newdb <项目名>` 这一行需要重新敲。
-
-直接在 harbor 上跑就行，不用像 3.3 节那样非得在 studio 上执行 —— 密码只是打印，没有
-管道去 Keychain，所以哪台机器跑都一样。
-
-以后再加一个项目库：`funcsave` 只保存了 `newdb` 这个函数本身，`$PG_ADMIN_USER` 和
-`$cid` 是 `-gx`（当前会话全局），不是 `-U`（跨会话通用），新开一个终端就没了 —— 所以
-新终端里先重新跑一遍最上面读 `.env` 那个 `for` 循环和 `set cid ...` 这两步，再
-`newdb <项目名>`，不用把 `function newdb ... end` 也重新粘一遍（`funcsave` 已经存了）。
-
-`/srv/data/postgres` 被清空重建后（见上一节），这里也要重新跑一遍建库，角色和库不会
-跟着卷一起消失，是因为卷本来就没了。
+密码打印在屏幕上，自己记下来（比如先抄进对应项目的 `.env`）——**密码先不进
+Keychain**，这块以后有单独的方案。以后再加一个项目库，直接 `./newdb.sh <项目名>`
+就行；`/srv/data/postgres` 被清空重建后（见上一节），这里也要重新跑一遍。
 
 ### 3.6 验证服务在监听
 
@@ -338,15 +342,16 @@ nc -z -G 3 harbor 5432 && echo "Postgres 端口通"
 
 ### 3.7 项目改用 harbor 上的数据库
 
-每个项目连自己的库，用户名等于库名（3.5 节的 `newdb` 建的）：
+每个项目连自己的库，用户名等于库名（3.5 节的 `newdb.sh` 建的）。连接串不用自己拼——
+`newdb.sh` 跑完直接打印出来的就是能用的那一条，形如：
 
 ```
 postgresql://nextloom-ai-dev:<密码>@harbor:5432/nextloom-ai-dev
 postgresql://lingtai-my:<密码>@harbor:5432/lingtai-my
 ```
 
-密码是 3.5 节 `newdb` 打印出来的那个，还没进 Keychain，先按你自己的方式存（比如
-直接放进对应项目的 `.env`）—— 等有了密码管理方案再回来补 `rw-mysec.mjs` 这一步。
+还没进 Keychain，先按你自己的方式存（比如直接放进对应项目的 `.env`）—— 等有了密码管
+理方案再回来补 `rw-mysec.mjs` 这一步。
 
 **完成标准**：四个服务 `docker compose ps` 都是 running；局域网和 tailnet 都能打开 Uptime Kuma；路由器没有做端口转发。
 
@@ -424,7 +429,7 @@ OUT=/srv/backup/pg
 mkdir -p "$OUT"
 cid="$(docker compose -f /srv/stacks/base/compose.yaml ps -q postgres)"
 
-# 备份每一个应用库（3.5 节 newdb 建的），跳过 postgres 自带的库和管理员自己的默认库。
+# 备份每一个应用库（3.5 节 newdb.sh 建的），跳过 postgres 自带的库和管理员自己的默认库。
 # 新加一个库不用改这个脚本 —— 它跟着 pg_database 走。
 for db in $(docker exec "$cid" psql -U "$PG_ADMIN_USER" -d postgres -tAc \
     "select datname from pg_database where datistemplate=false and datname not in (\'postgres\', \'$PG_ADMIN_USER\')"); do

@@ -85,10 +85,13 @@ ansible-playbook fleet/harbor.yml --ask-become-pass   # same thing without the w
   - `{studio,foundry,harbor}.yml` - One playbook per machine
   - `{studio,foundry,harbor}.sh` - Thin wrappers: check OS, install Ansible, pass flags through
   - `module/` - Task files, same structure as `mac-module/`
-  - `stacks/base/compose.yaml` - harbor's compose file. The one piece of *configuration* that
-    does live in this repo (everything else is in `fleet/SETUP.md`), because it needs to be
-    editable via `git pull` rather than re-pasted. `/srv/stacks/base/compose.yaml` on harbor is
-    a symlink back to a checkout of this file, not a copy.
+  - `stacks/base/` - The piece of *configuration* that does live in this repo (everything
+    else is in `fleet/SETUP.md`), because it needs to be editable via `git pull` rather than
+    re-pasted or re-typed. Both files are symlinked back to this checkout from
+    `/srv/stacks/base/` on harbor, not copied:
+    - `compose.yaml` - harbor's compose file
+    - `newdb.sh` - creates a role + same-named database pair on the `postgres` service, for
+      the multi-tenant-database setup (see SETUP.md 3.5). Plain bash, no shell session state.
 
 ### Key Technologies Configured
 - **Node.js Environment**: mise for version management, pnpm for package management
@@ -136,10 +139,11 @@ always pass both `cli` and `cli-all`. Prefer `import_tasks` in new playbooks.
 ### Fleet Conventions
 When touching anything under `fleet/`:
 - **`fleet/` installs software and nothing else.** Machine configuration (Tailscale login, service
-  setup, deployment, backups) is handled elsewhere — do not add it here. `fleet/stacks/base/compose.yaml`
-  is the sole exception: it's config, but it's tracked here (and symlinked into place on harbor)
-  specifically so updates are `git pull`, not copy-paste. Don't add a second exception without a
-  similarly good reason — everything else config-shaped belongs in `fleet/SETUP.md`.
+  setup, deployment, backups) is handled elsewhere — do not add it here. `fleet/stacks/base/`
+  (`compose.yaml`, `newdb.sh`) is the sole exception: it's config/tooling, but it's tracked here
+  (and symlinked into place on harbor) specifically so updates are `git pull`, not copy-paste.
+  Don't add a third file to that exception without a similarly good reason — everything else
+  config-shaped belongs in `fleet/SETUP.md`.
 - The shell scripts stay thin: OS check, install Ansible if missing, `--ask-become-pass` on Linux,
   `--dry-run` -> `--check --diff`, everything else passed straight to `ansible-playbook`. Package
   installation belongs in the playbooks, never in the scripts.
