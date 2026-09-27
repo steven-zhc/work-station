@@ -26,8 +26,16 @@ fi
 
 for name in "$@"; do
   pw="$(openssl rand -base64 24 | tr -d '/+=')"
-  docker exec "$cid" psql -U "$PG_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 -c \
-    "CREATE ROLE \"$name\" LOGIN PASSWORD '$pw'; CREATE DATABASE \"$name\" OWNER \"$name\";"
+  # 分几条 -c，不能塞进同一条：psql 把一个 -c 里的多条语句当一个隐式事务，
+  # 而 CREATE DATABASE 不能在事务块里跑（"cannot run inside a transaction block"）。
+  #
+  # REVOKE CONNECT FROM PUBLIC 这条不是可选的：默认所有登录角色都能 CONNECT 到任何
+  # 库（哪怕连不进去看不到表内容，也能连上、能看到表名列表 \dt）。不 revoke 的话
+  # "角色只能连自己的库" 是假的 —— 已经用真实 Postgres 验证过这个默认行为。
+  docker exec "$cid" psql -U "$PG_ADMIN_USER" -d postgres -v ON_ERROR_STOP=1 \
+    -c "CREATE ROLE \"$name\" LOGIN PASSWORD '$pw';" \
+    -c "CREATE DATABASE \"$name\" OWNER \"$name\";" \
+    -c "REVOKE CONNECT ON DATABASE \"$name\" FROM PUBLIC;"
   echo "$name 密码：$pw"
   echo "$name 连接串：postgresql://$name:$pw@harbor:5432/$name"
 done

@@ -299,8 +299,13 @@ docker compose logs postgres --tail 20    # 看到 "database system is ready to 
 
 ### 3.5 建应用库
 
-一个 Postgres 实例装多个项目的库：每个项目一个角色 + 一个同名的库，角色只能连自己的
-库，互相看不见。库名可以带连字符（下面直接用项目名），只是 SQL 里引用时要加双引号。
+一个 Postgres 实例装多个项目的库：每个项目一个角色 + 一个同名的库。库名可以带连字符
+（下面直接用项目名），只是 SQL 里引用时要加双引号。
+
+`newdb.sh` 建库的同时会 `REVOKE CONNECT ... FROM PUBLIC`，这条不是可选的：Postgres
+默认所有登录角色都能 `CONNECT` 到任何库（哪怕连不上表内容，也能连上、能看到表名列表），
+不 revoke 的话"角色只能连自己的库"是假的。已经拿真实 Postgres 验证过：revoke 之后跨
+项目连接会直接 `FATAL: permission denied for database`，owner 自己连自己的库不受影响。
 
 `newdb.sh` 是仓库里的真脚本（`fleet/stacks/base/newdb.sh`），跟 `compose.yaml` 一样
 在 3.1 节符号链接到了 `/srv/stacks/base/newdb.sh`。普通 bash，不依赖任何 shell 会话
