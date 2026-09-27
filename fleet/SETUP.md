@@ -292,16 +292,25 @@ function newdb --argument-names name
     echo "$name 密码：$pw"      # 记下来 —— 这一步不存 Keychain，也不写文件
     set -e pw
 end
+funcsave newdb      # 不然这个函数只活在当前这个 shell 里，下次开个新终端就 "command not found"
 
 newdb nextloom-ai-dev
 newdb lingtai-my
 ```
 
+`funcsave` 把函数写进 `~/.config/fish/functions/newdb.fish`，fish 以后每次启动都会自动
+加载，不用再重新粘贴一遍函数定义 —— 只有 `newdb <项目名>` 这一行需要重新敲。
+
 直接在 harbor 上跑就行，不用像 3.3 节那样非得在 studio 上执行 —— 密码只是打印，没有
 管道去 Keychain，所以哪台机器跑都一样。
 
-以后再加一个项目库，重复一次 `newdb <项目名>` 就行；`/srv/data/postgres` 被清空重建后
-（见上一节），这里也要重新跑一遍，角色和库不会跟着卷一起消失，是因为卷本来就没了。
+以后再加一个项目库：`funcsave` 只保存了 `newdb` 这个函数本身，`$PG_ADMIN_USER` 和
+`$cid` 是 `-gx`（当前会话全局），不是 `-U`（跨会话通用），新开一个终端就没了 —— 所以
+新终端里先重新跑一遍最上面读 `.env` 那个 `for` 循环和 `set cid ...` 这两步，再
+`newdb <项目名>`，不用把 `function newdb ... end` 也重新粘一遍（`funcsave` 已经存了）。
+
+`/srv/data/postgres` 被清空重建后（见上一节），这里也要重新跑一遍建库，角色和库不会
+跟着卷一起消失，是因为卷本来就没了。
 
 ### 3.6 验证服务在监听
 
