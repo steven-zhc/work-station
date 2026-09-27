@@ -1,0 +1,65 @@
+name: base
+
+# harbor 的基础服务栈。跑在 /srv/stacks/base（那边是这个文件的符号链接，指回这份仓库
+# 的检出目录 —— 见 fleet/SETUP.md 3.1）。.env 只存在于 harbor 本地，不进仓库。
+#
+# 三处是故意这样写的，改之前先看 fleet/SETUP.md 3.1 的说明：
+#   - 端口绑 0.0.0.0（局域网 + tailnet 都能访问，公网访问不到的前提是路由器没做端口转发）
+#   - N8N_SECURE_COOKIE=false（走 http，不关掉这个登录不进去）
+#   - Dozzle 开了认证（它挂着 docker.sock，能读到 Postgres 启动时打印的密码）
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${PG_ADMIN_USER}
+      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
+    ports:
+      - "5432:5432"
+    volumes:
+      # 18 的挂载点是 /var/lib/postgresql，不是 /data —— 官方镜像把数据目录改成了
+      # /var/lib/postgresql/18/docker（按大版本分目录，为 pg_upgrade 铺路）。挂到
+      # .../data 的话容器会直接拒绝启动。
+      - /srv/data/postgres:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${PG_ADMIN_USER}"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:2.40.5
+    restart: unless-stopped
+    environment:
+      N8N_HOST: harbor
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      WEBHOOK_URL: http://harbor:5678/
+      GENERIC_TIMEZONE: America/Chicago
+      N8N_SECURE_COOKIE: "false"
+    ports:
+      - "5678:5678"
+    volumes:
+      - /srv/data/n8n:/home/node/.n8n
+    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    restart: unless-stopped
+    ports:
+      - "3001:3001"
+    volumes:
+      - /srv/data/uptime-kuma:/app/data
+
+  dozzle:
+    image: amir20/dozzle:v11
+    restart: unless-stopped
+    environment:
+      DOZZLE_AUTH_PROVIDER: simple
+    ports:
+      - "8080:8080"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /srv/data/dozzle:/data

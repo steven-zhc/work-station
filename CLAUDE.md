@@ -85,6 +85,10 @@ ansible-playbook fleet/harbor.yml --ask-become-pass   # same thing without the w
   - `{studio,foundry,harbor}.yml` - One playbook per machine
   - `{studio,foundry,harbor}.sh` - Thin wrappers: check OS, install Ansible, pass flags through
   - `module/` - Task files, same structure as `mac-module/`
+  - `stacks/base/compose.yaml` - harbor's compose file. The one piece of *configuration* that
+    does live in this repo (everything else is in `fleet/SETUP.md`), because it needs to be
+    editable via `git pull` rather than re-pasted. `/srv/stacks/base/compose.yaml` on harbor is
+    a symlink back to a checkout of this file, not a copy.
 
 ### Key Technologies Configured
 - **Node.js Environment**: mise for version management, pnpm for package management
@@ -132,7 +136,10 @@ always pass both `cli` and `cli-all`. Prefer `import_tasks` in new playbooks.
 ### Fleet Conventions
 When touching anything under `fleet/`:
 - **`fleet/` installs software and nothing else.** Machine configuration (Tailscale login, service
-  setup, deployment, backups) is handled elsewhere — do not add it here.
+  setup, deployment, backups) is handled elsewhere — do not add it here. `fleet/stacks/base/compose.yaml`
+  is the sole exception: it's config, but it's tracked here (and symlinked into place on harbor)
+  specifically so updates are `git pull`, not copy-paste. Don't add a second exception without a
+  similarly good reason — everything else config-shaped belongs in `fleet/SETUP.md`.
 - The shell scripts stay thin: OS check, install Ansible if missing, `--ask-become-pass` on Linux,
   `--dry-run` -> `--check --diff`, everything else passed straight to `ansible-playbook`. Package
   installation belongs in the playbooks, never in the scripts.

@@ -10,8 +10,11 @@ fleet/
 ├── studio.sh/.yml     Mac mini M4 · 设计台
 ├── foundry.sh/.yml    MacBook Pro 15 (Intel) · 跑 lingtai
 ├── harbor.sh/.yml      ThinkPad T450 / Mint 22.2 · 运行时主机
-└── module/            fleet 专用的任务文件（studio/foundry 共用 mac-common.yml；
-                        harbor 用 linux-common.yml + linux-tailscale.yml）
+├── module/            fleet 专用的任务文件（studio/foundry 共用 mac-common.yml；
+│                       harbor 用 linux-common.yml + linux-tailscale.yml）
+└── stacks/base/compose.yaml   harbor 服务栈的真文件（唯一一个配置也进仓库的地方 ——
+                        harbor 上 /srv/stacks/base/compose.yaml 是指回它的符号链接，
+                        改完 git pull 就生效，见 SETUP.md 3.1）
 ```
 
 日常开发工具链（Node、Python、CLI、字体、GUI 应用……）不在这三个 playbook 里，走仓库

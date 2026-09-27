@@ -136,75 +136,45 @@ sudo chown $USER:$USER /srv/stacks /srv/data /srv/backup    # 只改顶层
 
 ### 3.1 compose 文件
 
-```yaml
+compose.yaml 是仓库里的真文件，`fleet/stacks/base/compose.yaml`，不再靠复制粘贴生成。
+harbor 上放一份仓库检出，`/srv/stacks/base/compose.yaml` 只是个指回去的符号链接 ——
+以后这份文件改了，`git pull` 之后原地就是最新的，不用重新粘贴。
+
+**第一次**，harbor 上还没有这个仓库的话，先克隆（跟 `README.md` 里「Git Setup with
+SSH Key」一样，用你自己的 SSH key；`git` 已经在 `linux-local.yml` 里装过了）：
+
+```fish
 # [harbor]
-# mkdir -p /srv/stacks/base && cd /srv/stacks/base
-# echo '
-name: base
-
-services:
-  postgres:
-    image: postgres:18-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: ${PG_ADMIN_USER}
-      POSTGRES_PASSWORD: ${PG_ADMIN_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - /srv/data/postgres:/var/lib/postgresql
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${PG_ADMIN_USER}"]
-      interval: 30s
-      timeout: 5s
-      retries: 5
-    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
-
-  n8n:
-    image: docker.n8n.io/n8nio/n8n:2.40.5
-    restart: unless-stopped
-    environment:
-      N8N_HOST: harbor
-      N8N_PORT: "5678"
-      N8N_PROTOCOL: http
-      WEBHOOK_URL: http://harbor:5678/
-      GENERIC_TIMEZONE: America/Chicago
-      N8N_SECURE_COOKIE: "false"
-    ports:
-      - "5678:5678"
-    volumes:
-      - /srv/data/n8n:/home/node/.n8n
-    logging: { driver: json-file, options: { max-size: "10m", max-file: "3" } }
-
-  uptime-kuma:
-    image: louislam/uptime-kuma:2
-    restart: unless-stopped
-    ports:
-      - "3001:3001"
-    volumes:
-      - /srv/data/uptime-kuma:/app/data
-
-  dozzle:
-    image: amir20/dozzle:v11
-    restart: unless-stopped
-    environment:
-      DOZZLE_AUTH_PROVIDER: simple
-    ports:
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock:ro
-      - /srv/data/dozzle:/data'
-# > compose.yaml
+mkdir -p ~/workspace
+git clone git@github.com:steven-zhc/work-station.git ~/workspace/work-station
 ```
 
-fish 的单引号里 `$` 不展开，所以 `${PG_ADMIN_USER}` 会原样写进文件，由 compose 从 `.env` 里读。`PG_ADMIN_USER` 只是集群管理员，不对应任何一个项目的库 —— 应用库在 3.5 节单独建。
+然后建符号链接：
 
-这个文件里有三处是故意的：
+```fish
+# [harbor]
+mkdir -p /srv/stacks/base
+ln -sf ~/workspace/work-station/fleet/stacks/base/compose.yaml /srv/stacks/base/compose.yaml
+```
+
+**以后要更新**，在 harbor 上：
+
+```fish
+# [harbor]
+cd ~/workspace/work-station && git pull
+cd /srv/stacks/base && docker compose config >/dev/null && echo "compose 配置 OK"
+docker compose up -d      # 应用改动，会按需重建容器
+```
+
+`.env` 不在仓库里，永远只存在于 `/srv/stacks/base/.env`（見 3.3），`git pull` 不会碰它。
+
+这个文件里有三处是故意的（文件自己也有对应的注释）：
 
 - **端口绑 `0.0.0.0`**。局域网和 tailnet 都能访问。以后想收紧某个服务，只能改这里的绑定（比如写成 `"<Tailscale IP>:5432:5432"` 只让 tailnet 访问）—— Docker 会绕过 UFW 自己插 iptables 规则，`ufw deny` 挡不住。
 - **`N8N_SECURE_COOKIE: "false"`**。走 http 时不关掉这个，n8n 登录不进去。
 - **Dozzle 开认证**。它挂着 `docker.sock`，能读所有容器的日志 —— 包括 Postgres 启动时打印的密码。
 - **Postgres 18 的挂载点是 `/var/lib/postgresql`，不是 `/data`**。18 的官方镜像把数据目录改成了 `/var/lib/postgresql/18/docker`（按大版本分目录，为以后 `pg_upgrade` 铺路）。照老习惯挂到 `/var/lib/postgresql/data`，容器会直接拒绝启动。
+- **`PG_ADMIN_USER` 只是集群管理员**，不对应任何一个项目的库 —— 应用库在 3.5 节单独建。
 
 **版本**：都是写这份文档时（2026-09）的最新稳定版。
 
@@ -215,7 +185,7 @@ fish 的单引号里 `$` 不展开，所以 `${PG_ADMIN_USER}` 会原样写进�
 | Uptime Kuma | `2` | 跟着 2.x 自动更新 |
 | Dozzle | `v11` | 跟着 v11.x 自动更新 |
 
-升级：改 tag（n8n）或直接拉新（其余），然后 `docker compose pull && docker compose up -d`。
+升级：在仓库里改 `fleet/stacks/base/compose.yaml` 的 tag（n8n）或不用改（其余，本来就没钉版本号），提交、`git push`，然后在 harbor 上 `git pull` + `docker compose pull && docker compose up -d`。
 
 n8n 2.x 默认**禁用了 Execute Command 节点**，Code 节点也跑在隔离的 task runner 里。考虑到服务开在局域网上，这正是我们想要的，别特意打开。
 
